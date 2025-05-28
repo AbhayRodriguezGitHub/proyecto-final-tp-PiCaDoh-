@@ -1,36 +1,36 @@
-# Pi-Ca-Doh!
+# Nombre del Proyecto: PI-CA-DOH! 
 
-A [libGDX](https://libgdx.com/) project generated with [gdx-liftoff](https://github.com/libgdx/gdx-liftoff).
+## Integrantes del Grupo
+ 
+- Rodríguez Abhay
+- Mendez Santiago
+- Gonzalez Gael
 
-This project was generated with a template including simple application launchers and an `ApplicationAdapter` extension that draws libGDX logo.
 
-## Platforms
+## Descripción Corta del Juego 
 
-- `core`: Main module with the application logic shared by all platforms.
-- `lwjgl3`: Primary desktop platform using LWJGL3; was called 'desktop' in older docs.
-- `html`: Web platform using GWT and WebGL. Supports only Java projects.
+Pi-Ca-Doh! Es un videojuego de cartas por turnos donde dos jugadores se enfrentan en un duelo
+estratégico utilizando mazos personalizados. Inspirado en el clásico Yu-Gi-Oh!, pero con mecánicas y
+lore originales, el juego propone batallas dinámicas, una selección de cartas previa a cada partida y un
+universo narrativo único detrás de cada personaje.
 
-## Gradle
+## Tecnologías Utilizadas 
+-LibGDX como framework principal para el desarrollo
+-Plataformas Objetivo: 
+-Escritorio (Windows)
 
-This project uses [Gradle](https://gradle.org/) to manage dependencies.
-The Gradle wrapper was included, so you can run Gradle tasks using `gradlew.bat` or `./gradlew` commands.
-Useful Gradle tasks and flags:
+#Cómo Compilar y Ejecutar 
 
-- `--continue`: when using this flag, errors will not stop the tasks from running.
-- `--daemon`: thanks to this flag, Gradle daemon will be used to run chosen tasks.
-- `--offline`: when using this flag, cached dependency archives will be used.
-- `--refresh-dependencies`: this flag forces validation of all dependencies. Useful for snapshot versions.
-- `build`: builds sources and archives of every project.
-- `cleanEclipse`: removes Eclipse project data.
-- `cleanIdea`: removes IntelliJ project data.
-- `clean`: removes `build` folders, which store compiled classes and built archives.
-- `eclipse`: generates Eclipse project data.
-- `html:dist`: compiles GWT sources. The compiled application can be found at `html/build/dist`: you can use any HTTP server to deploy it.
-- `html:superDev`: compiles GWT sources and runs the application in SuperDev mode. It will be available at [localhost:8080/html](http://localhost:8080/html). Use only during development.
-- `idea`: generates IntelliJ project data.
-- `lwjgl3:jar`: builds application's runnable jar, which can be found at `lwjgl3/build/libs`.
-- `lwjgl3:run`: starts the application.
-- `test`: runs unit tests (if any).
+1. Clonar este repositorio: 
 
-Note that most tasks that are not specific to a single project can be run with `name:` prefix, where the `name` should be replaced with the ID of a specific project.
-For example, `core:clean` removes `build` folder only from the `core` project.
+git clone https://github.com/Santiagomendez12/proyecto-final-tp-PiCaDoh
+
+2. Importar el proyecto en un IDE como IntelliJ IDEA o Eclipse 
+3. Configurar las dependencias de Gradle (esto se hace automáticamente al abrir el proyecto si tenés Gradle instalado).
+4. Ejecutar el proyecto desde la configuración del launcher de escritorio (`DesktopLauncher`).
+
+## Estado Actual del Proyecto
+Configuración inicial y estructura del proyecto.
+
+## Link del Wiki 
+https://github.com/Santiagomendez12/proyecto-final-tp-PiCaDoh.wiki.git
