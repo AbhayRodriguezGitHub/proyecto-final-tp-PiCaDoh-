@@ -31,18 +31,18 @@ git clone https://github.com/Santiagomendez12/proyecto-final-tp-PiCaDoh
 
 ## Configurar en Eclipse:
 
-Abre Eclipse.
-Ve a File > Import > Gradle > Existing Gradle Project.
-Dirígete a la carpeta donde clonaste el repositorio.
-Haz clic en Finish. Eclipse descargará automáticamente las dependencias necesarias.
+1. Abre Eclipse.
+2. Ve a File > Import > Gradle > Existing Gradle Project.
+3. Dirígete a la carpeta donde clonaste el repositorio.
+4. Haz clic en Finish. Eclipse descargará automáticamente las dependencias necesarias.
 
 ## Ejecutar el proyecto:
 
-Ingresa al directorio PiCaDoh!-lwjgl3.
-Luego navega a src/main/java.
-Abre el paquete mijuego.picadoh.lwjgl3.
-Haz clic derecho sobre el archivo Lwjgl3Launcher.java.
-Selecciona Run As > Java Application para ejecutar el proyecto.
+1. Ingresa al directorio PiCaDoh!-lwjgl3.
+2. Luego navega a src/main/java.
+3. Abre el paquete mijuego.picadoh.lwjgl3.
+4. Haz clic derecho sobre el archivo Lwjgl3Launcher.java.
+5. Selecciona Run As > Java Application para ejecutar el proyecto.
 
 ## Estado Actual del Proyecto
 Configuración inicial y estructura del proyecto.
