@@ -15,9 +15,9 @@ lore originales, el juego propone batallas dinámicas, una selección de cartas 
 universo narrativo único detrás de cada personaje.
 
 ## Tecnologías y Plataformas objetivo
--LibGDX como framework principal para el desarrollo. 
--Escritorio (solo Windows).
--Utilizaremos el lenguaje de programacion Java, en el Ide Eclipse.
+- LibGDX como framework principal para el desarrollo. 
+- Escritorio (solo Windows).
+- Utilizaremos el lenguaje de programacion Java, en el Ide Eclipse.
 
 ## Cómo Compilar y Ejecutar 
 
@@ -49,4 +49,4 @@ git clone https://github.com/AbhayRodriguezGitHub/proyecto-final-tp-PiCaDoh
 Configuración inicial y estructura del proyecto.
 
 ## Link del Wiki 
-[Link del Wiki](https://github.com/AbhayRodriguezGitHub/proyecto-final-tp-PiCaDoh-/wiki)
+[Haz click aqui!](https://github.com/AbhayRodriguezGitHub/proyecto-final-tp-PiCaDoh-/wiki)
