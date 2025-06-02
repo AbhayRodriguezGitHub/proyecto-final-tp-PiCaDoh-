@@ -23,7 +23,7 @@ universo narrativo único detrás de cada personaje.
 
 1. Clonar este repositorio: 
 
-git clone https://github.com/Santiagomendez12/proyecto-final-tp-PiCaDoh
+git clone https://github.com/AbhayRodriguezGitHub/proyecto-final-tp-PiCaDoh
 
 2. Importar el proyecto en un IDE como IntelliJ IDEA o Eclipse 
 3. Configurar las dependencias de Gradle (Al ser un proyecto Litoff, incluye el Gradle Wrapper,
