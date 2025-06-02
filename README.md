@@ -49,4 +49,4 @@ git clone https://github.com/Santiagomendez12/proyecto-final-tp-PiCaDoh
 Configuración inicial y estructura del proyecto.
 
 ## Link del Wiki 
-[Link](https://github.com/Santiagomendez12/proyecto-final-tp-PiCaDoh.wiki)
+[Link del Wiki](https://github.com/Santiagomendez12/proyecto-final-tp-PiCaDoh.wiki)
