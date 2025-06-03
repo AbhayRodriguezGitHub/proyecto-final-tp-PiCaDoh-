@@ -41,7 +41,7 @@ git clone https://github.com/AbhayRodriguezGitHub/proyecto-final-tp-PiCaDoh
 
 1. Ingresa al directorio PiCaDoh!-lwjgl3.
 2. Luego navega a src/main/java.
-3. Abre el paquete mijuego.picadoh.
+3. Abre el paquete miijuego.picadoh/lwjgl3.
 4. Haz clic derecho sobre el archivo Lwjgl3Launcher.java.
 5. Selecciona Run As > Java Application para ejecutar el proyecto.
 
