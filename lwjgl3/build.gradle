@@ -183,3 +183,13 @@ startScripts.classpath = project.tasks.jar.outputs.files
 if(enableGraalNative == 'true') {
   apply from: file("nativeimage.gradle")
 }
+
+// Copia los assets desde core/assets al build del launcher
+task copyAssets(type: Copy) {
+  from '../core/assets' // carpeta fuente
+  into 'build/assets'   // destino donde LWJGL3 busca recursos
+}
+
+classes.dependsOn copyAssets
+
+
