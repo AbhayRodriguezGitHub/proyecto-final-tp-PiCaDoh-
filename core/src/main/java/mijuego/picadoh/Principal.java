@@ -15,7 +15,6 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
 public class Principal extends Game {
     public SpriteBatch batch;
 
-    // NUEVO: Etapa y etiqueta para mostrar coordenadas globales
     private Stage coordenadasStage;
     private Label coordenadasLabel;
 
@@ -23,26 +22,54 @@ public class Principal extends Game {
     public void create() {
         batch = new SpriteBatch();
         setCursorPersonalizado();
-        setupVisorDeCoordenadas(); // NUEVO
+        setupVisorDeCoordenadas();
         setScreen(new PantallaMenu(this));
     }
 
-    private void setCursorPersonalizado() {
-        Pixmap pixmap = new Pixmap(Gdx.files.absolute("lwjgl3/assets/ui/CURSOR.png"));
-        int xHotspot = pixmap.getWidth() / 2;
-        int yHotspot = pixmap.getHeight() / 6;
+    public void setCursorPersonalizado() {
+        Pixmap original = new Pixmap(Gdx.files.absolute("lwjgl3/assets/ui/CURSOR.png"));
 
-        Cursor cursor = Gdx.graphics.newCursor(pixmap, xHotspot, yHotspot);
+        int screenWidth = Gdx.graphics.getWidth();
+        int screenHeight = Gdx.graphics.getHeight();
+
+        float refWidth = 1920f;
+        float refHeight = 1080f;
+
+        float scale = (screenWidth / refWidth + screenHeight / refHeight) / 2f;
+
+        // CORREGIDO: dimensiones redondeadas a potencia de 2
+        int newWidth = nextPowerOfTwo((int)(original.getWidth() * scale));
+        int newHeight = nextPowerOfTwo((int)(original.getHeight() * scale));
+
+        Pixmap scaled = new Pixmap(newWidth, newHeight, Pixmap.Format.RGBA8888);
+        scaled.drawPixmap(original,
+            0, 0, original.getWidth(), original.getHeight(),
+            0, 0, newWidth, newHeight
+        );
+
+        int xHotspot = newWidth / 2;
+        int yHotspot = newHeight / 6;
+
+        Cursor cursor = Gdx.graphics.newCursor(scaled, xHotspot, yHotspot);
         Gdx.graphics.setCursor(cursor);
-        pixmap.dispose();
+
+        original.dispose();
+        scaled.dispose();
     }
 
-    // NUEVO: Configura el visor de coordenadas global
+    // Método auxiliar para calcular siguiente potencia de 2
+    private int nextPowerOfTwo(int n) {
+        if (n <= 0) return 1;
+        int power = 1;
+        while (power < n) power <<= 1;
+        return power;
+    }
+
     private void setupVisorDeCoordenadas() {
         coordenadasStage = new Stage(new ScreenViewport());
 
         Skin skin = new Skin();
-        BitmapFont font = new BitmapFont(); // Fuente por defecto
+        BitmapFont font = new BitmapFont();
         Label.LabelStyle labelStyle = new Label.LabelStyle(font, Color.WHITE);
         skin.add("default", labelStyle);
 
@@ -53,10 +80,8 @@ public class Principal extends Game {
 
     @Override
     public void render() {
-        // Primero renderizamos la lógica normal (pantallas, juego, etc.)
         super.render();
 
-        // Luego actualizamos y dibujamos las coordenadas encima
         int mouseX = Gdx.input.getX();
         int mouseY = Gdx.graphics.getHeight() - Gdx.input.getY();
         coordenadasLabel.setText("X: " + mouseX + " | Y: " + mouseY);
@@ -68,14 +93,15 @@ public class Principal extends Game {
     @Override
     public void resize(int width, int height) {
         super.resize(width, height);
-        if (coordenadasStage != null)
+        if (coordenadasStage != null) {
             coordenadasStage.getViewport().update(width, height, true);
+        }
     }
 
     @Override
     public void dispose() {
         batch.dispose();
-        coordenadasStage.dispose(); // NUEVO
+        coordenadasStage.dispose();
         super.dispose();
     }
 }
