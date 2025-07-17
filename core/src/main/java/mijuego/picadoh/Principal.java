@@ -18,12 +18,23 @@ public class Principal extends Game {
     private Stage coordenadasStage;
     private Label coordenadasLabel;
 
+    // Bandera que guarda el estado del cursor
+    private boolean cursorPersonalizadoUsado = true;
+
     @Override
     public void create() {
         batch = new SpriteBatch();
-        setCursorPersonalizado();
+        aplicarCursor();  // Aplica el cursor según la bandera
         setupVisorDeCoordenadas();
         setScreen(new PantallaMenu(this));
+    }
+
+    public void aplicarCursor() {
+        if (cursorPersonalizadoUsado) {
+            setCursorPersonalizado();
+        } else {
+            Gdx.graphics.setSystemCursor(Cursor.SystemCursor.Arrow);
+        }
     }
 
     public void setCursorPersonalizado() {
@@ -37,7 +48,6 @@ public class Principal extends Game {
 
         float scale = (screenWidth / refWidth + screenHeight / refHeight) / 2f;
 
-        // CORREGIDO: dimensiones redondeadas a potencia de 2
         int newWidth = nextPowerOfTwo((int)(original.getWidth() * scale));
         int newHeight = nextPowerOfTwo((int)(original.getHeight() * scale));
 
@@ -57,7 +67,15 @@ public class Principal extends Game {
         scaled.dispose();
     }
 
-    // Método auxiliar para calcular siguiente potencia de 2
+    public boolean isCursorPersonalizadoUsado() {
+        return cursorPersonalizadoUsado;
+    }
+
+    public void setCursorPersonalizadoUsado(boolean usado) {
+        this.cursorPersonalizadoUsado = usado;
+        aplicarCursor(); // Cada vez que se cambia, se aplica
+    }
+
     private int nextPowerOfTwo(int n) {
         if (n <= 0) return 1;
         int power = 1;

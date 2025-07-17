@@ -26,13 +26,12 @@ public class PantallaMenu implements Screen {
     public void show() {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/FONDOMENU1.png"));
 
-        // Cursor personalizado
-        Pixmap pixmap = new Pixmap(Gdx.files.absolute("lwjgl3/assets/ui/CURSOR.png"));
-        int xHotspot = pixmap.getWidth() / 2;
-        int yHotspot = pixmap.getHeight() / 6;
-        Cursor cursor = Gdx.graphics.newCursor(pixmap, xHotspot, yHotspot);
-        Gdx.graphics.setCursor(cursor);
-        pixmap.dispose();
+        // ⚠️ Aplicar el cursor según la preferencia del usuario
+        if (juego.isCursorPersonalizadoUsado()) {
+            juego.setCursorPersonalizado();
+        } else {
+            Gdx.graphics.setSystemCursor(Cursor.SystemCursor.Arrow);
+        }
 
         // Stage + botón invisible sobre la tuerquita
         stage = new Stage(new ScreenViewport());
@@ -65,8 +64,10 @@ public class PantallaMenu implements Screen {
         stage.draw();
     }
 
-    @Override public void resize(int width, int height) {
+    @Override
+    public void resize(int width, int height) {
         stage.getViewport().update(width, height, true);
+        juego.aplicarCursor(); // <-- Esto reaplica el cursor escalado
     }
 
     @Override public void pause() {}
