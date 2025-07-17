@@ -3,7 +3,6 @@ package mijuego.picadoh;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Texture;
-import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Cursor;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.scenes.scene2d.Stage;
@@ -33,25 +32,38 @@ public class PantallaMenu implements Screen {
             Gdx.graphics.setSystemCursor(Cursor.SystemCursor.Arrow);
         }
 
-        // Stage + botón invisible sobre la tuerquita
+        // 🎵 Reproducir música si no está sonando
+        juego.reproducirMusica();
+
         stage = new Stage(new ScreenViewport());
         Gdx.input.setInputProcessor(stage);
 
         Skin skin = new Skin();
-        BitmapFont font = new BitmapFont(); // Fuente default
+        BitmapFont font = new BitmapFont();
         skin.add("default", new TextButton.TextButtonStyle(null, null, null, font));
 
+        // Botón invisible sobre la tuerquita (configuración)
         TextButton btnConfig = new TextButton("", skin);
-        btnConfig.setBounds(20, 20, 80, 80); // Aproximado para cubrir la tuerquita
-
+        btnConfig.setBounds(20, 20, 80, 80);
         btnConfig.addListener(new ClickListener() {
             public void clicked(InputEvent event, float x, float y) {
                 System.out.println(">>> CONFIGURACIÓN clickeada!");
                 juego.setScreen(new PantallaConfiguracion(juego));
             }
         });
-
         stage.addActor(btnConfig);
+
+        // Botón invisible para SALIR del juego
+        TextButton btnSalir = new TextButton("", skin);
+        btnSalir.setBounds(400, 150, 500, 200); // Tamaño y posición corregidos
+        btnSalir.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                System.out.println(">>> SALIR clickeado! Cerrando juego...");
+                Gdx.app.exit();
+            }
+        });
+        stage.addActor(btnSalir);
     }
 
     @Override
@@ -67,7 +79,7 @@ public class PantallaMenu implements Screen {
     @Override
     public void resize(int width, int height) {
         stage.getViewport().update(width, height, true);
-        juego.aplicarCursor(); // <-- Esto reaplica el cursor escalado
+        juego.aplicarCursor();
     }
 
     @Override public void pause() {}

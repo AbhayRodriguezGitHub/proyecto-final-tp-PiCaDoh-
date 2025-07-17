@@ -2,6 +2,7 @@ package mijuego.picadoh;
 
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.graphics.Cursor;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -18,15 +19,45 @@ public class Principal extends Game {
     private Stage coordenadasStage;
     private Label coordenadasLabel;
 
-    // Bandera que guarda el estado del cursor
     private boolean cursorPersonalizadoUsado = true;
+
+    // 🎵 Música principal global
+    private Music musicaMenu;
 
     @Override
     public void create() {
         batch = new SpriteBatch();
-        aplicarCursor();  // Aplica el cursor según la bandera
+        aplicarCursor();
         setupVisorDeCoordenadas();
+        cargarMusica();
+        reproducirMusica();
+
         setScreen(new PantallaMenu(this));
+    }
+
+    // Cargar música (una sola vez)
+    private void cargarMusica() {
+        musicaMenu = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/menus/musica_menu.mp3"));
+        musicaMenu.setLooping(true);
+        musicaMenu.setVolume(0.5f); // Puedes ajustar el volumen aquí
+    }
+
+    public void reproducirMusica() {
+        if (musicaMenu != null && !musicaMenu.isPlaying()) {
+            musicaMenu.play();
+        }
+    }
+
+    public void pausarMusica() {
+        if (musicaMenu != null && musicaMenu.isPlaying()) {
+            musicaMenu.pause();
+        }
+    }
+
+    public void detenerMusica() {
+        if (musicaMenu != null) {
+            musicaMenu.stop();
+        }
     }
 
     public void aplicarCursor() {
@@ -73,7 +104,7 @@ public class Principal extends Game {
 
     public void setCursorPersonalizadoUsado(boolean usado) {
         this.cursorPersonalizadoUsado = usado;
-        aplicarCursor(); // Cada vez que se cambia, se aplica
+        aplicarCursor();
     }
 
     private int nextPowerOfTwo(int n) {
@@ -120,6 +151,9 @@ public class Principal extends Game {
     public void dispose() {
         batch.dispose();
         coordenadasStage.dispose();
+        if (musicaMenu != null) {
+            musicaMenu.dispose();
+        }
         super.dispose();
     }
 }

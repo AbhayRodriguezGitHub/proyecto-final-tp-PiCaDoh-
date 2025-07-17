@@ -38,6 +38,9 @@ public class PantallaConfiguracion implements Screen {
     public void show() {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/MENUCONFIGURACION.png"));
 
+        // 🎵 Reproducir música si aún no está sonando
+        juego.reproducirMusica();
+
         viewport = new ScalingViewport(Scaling.stretch, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
         stage = new Stage(viewport);
         Gdx.input.setInputProcessor(stage);
@@ -139,7 +142,6 @@ public class PantallaConfiguracion implements Screen {
         stage.getViewport().update(width, height, true);
         juego.aplicarCursor(); // <-- Esto reaplica el cursor escalado
     }
-
 
     @Override public void pause() {}
     @Override public void resume() {}
