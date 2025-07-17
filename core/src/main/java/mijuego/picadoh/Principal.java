@@ -8,6 +8,7 @@ import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
@@ -24,6 +25,11 @@ public class Principal extends Game {
     // 🎵 Música principal global
     private Music musicaMenu;
 
+    // 🔊 Volumen global (0.0f a 1.0f)
+    private float volumenMusica = 1f;
+
+    private boolean modoVentana = false;
+
     @Override
     public void create() {
         batch = new SpriteBatch();
@@ -31,15 +37,14 @@ public class Principal extends Game {
         setupVisorDeCoordenadas();
         cargarMusica();
         reproducirMusica();
-
         setScreen(new PantallaMenu(this));
     }
 
-    // Cargar música (una sola vez)
+    // Cargar música una sola vez
     private void cargarMusica() {
         musicaMenu = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/menus/musica_menu.mp3"));
         musicaMenu.setLooping(true);
-        musicaMenu.setVolume(0.5f); // Puedes ajustar el volumen aquí
+        musicaMenu.setVolume(volumenMusica); // Aplica el volumen actual
     }
 
     public void reproducirMusica() {
@@ -57,6 +62,17 @@ public class Principal extends Game {
     public void detenerMusica() {
         if (musicaMenu != null) {
             musicaMenu.stop();
+        }
+    }
+
+    public float getVolumenMusica() {
+        return volumenMusica;
+    }
+
+    public void setVolumenMusica(float volumen) {
+        this.volumenMusica = MathUtils.clamp(volumen, 0f, 1f);
+        if (musicaMenu != null) {
+            musicaMenu.setVolume(this.volumenMusica);
         }
     }
 
@@ -112,6 +128,14 @@ public class Principal extends Game {
         int power = 1;
         while (power < n) power <<= 1;
         return power;
+    }
+
+    public boolean isModoVentana() {
+        return modoVentana;
+    }
+
+    public void setModoVentana(boolean modoVentana) {
+        this.modoVentana = modoVentana;
     }
 
     private void setupVisorDeCoordenadas() {

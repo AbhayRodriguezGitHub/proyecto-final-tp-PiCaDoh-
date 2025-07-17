@@ -17,6 +17,8 @@ import com.badlogic.gdx.utils.viewport.ScalingViewport;
 import com.badlogic.gdx.utils.Scaling;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.Graphics.DisplayMode;
+import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
+import com.badlogic.gdx.scenes.scene2d.Actor;
 
 public class PantallaConfiguracion implements Screen {
     private final Principal juego;
@@ -24,7 +26,6 @@ public class PantallaConfiguracion implements Screen {
     private Stage stage;
     private Image fondoImage;
     private Label ticLabel;
-    private boolean modoVentana = false;
 
     private final float VIRTUAL_WIDTH = 1920f;
     private final float VIRTUAL_HEIGHT = 1080f;
@@ -38,7 +39,6 @@ public class PantallaConfiguracion implements Screen {
     public void show() {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/MENUCONFIGURACION.png"));
 
-        // 🎵 Reproducir música si aún no está sonando
         juego.reproducirMusica();
 
         viewport = new ScalingViewport(Scaling.stretch, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
@@ -61,17 +61,18 @@ public class PantallaConfiguracion implements Screen {
         ticLabel = new Label("X", skin);
         ticLabel.setFontScale(8f);
         ticLabel.setPosition(1032, 910);
-        ticLabel.setVisible(false);
+        ticLabel.setVisible(juego.isModoVentana());
         stage.addActor(ticLabel);
 
         ImageButton botonModoVentana = crearBotonInvisible(1045, 906, 150, 150);
         botonModoVentana.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                modoVentana = !modoVentana;
-                ticLabel.setVisible(modoVentana);
+                boolean nuevoModo = !juego.isModoVentana();
+                juego.setModoVentana(nuevoModo);
+                ticLabel.setVisible(nuevoModo);
 
-                if (modoVentana) {
+                if (nuevoModo) {
                     Gdx.graphics.setWindowedMode(1024, 768);
                 } else {
                     for (DisplayMode mode : Gdx.graphics.getDisplayModes()) {
@@ -82,10 +83,8 @@ public class PantallaConfiguracion implements Screen {
                     }
                 }
 
-                // Forzar actualización del viewport
                 resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-
-                juego.aplicarCursor(); // Reaplica el cursor
+                juego.aplicarCursor();
             }
         });
         stage.addActor(botonModoVentana);
@@ -116,11 +115,42 @@ public class PantallaConfiguracion implements Screen {
             }
         });
         stage.addActor(botonCursorRubberhose);
+
+        // 🎚️ SLIDER DE VOLUMEN
+        Slider.SliderStyle sliderStyle = new Slider.SliderStyle();
+
+        // Fondo: línea negra
+        Pixmap fondoBarra = new Pixmap(1, 10, Pixmap.Format.RGBA8888);
+        fondoBarra.setColor(Color.BLACK);
+        fondoBarra.fill();
+        sliderStyle.background = new TextureRegionDrawable(new TextureRegion(new Texture(fondoBarra)));
+        fondoBarra.dispose();
+
+        // Botón: círculo negro
+        Pixmap knob = new Pixmap(30, 30, Pixmap.Format.RGBA8888);
+        knob.setColor(Color.BLACK);
+        knob.fillCircle(15, 15, 15);
+        sliderStyle.knob = new TextureRegionDrawable(new TextureRegion(new Texture(knob)));
+        knob.dispose();
+
+        Slider slider = new Slider(0f, 1f, 0.01f, false, sliderStyle);
+        slider.setValue(juego.getVolumenMusica());
+        slider.setBounds(1252, 630, 471, 30); // Desde 1253 hasta 1722
+
+        // ✅ Listener escalable y confiable
+        slider.addListener(new ChangeListener() {
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
+                juego.setVolumenMusica(slider.getValue());
+            }
+        });
+
+        stage.addActor(slider);
     }
 
     private ImageButton crearBotonInvisible(float x, float y, float width, float height) {
         Pixmap pixmap = new Pixmap((int) width, (int) height, Pixmap.Format.RGBA8888);
-        pixmap.setColor(0, 0, 0, 0); // Color transparente
+        pixmap.setColor(0, 0, 0, 0);
         pixmap.fill();
         Texture texture = new Texture(pixmap);
         pixmap.dispose();
@@ -140,7 +170,7 @@ public class PantallaConfiguracion implements Screen {
     @Override
     public void resize(int width, int height) {
         stage.getViewport().update(width, height, true);
-        juego.aplicarCursor(); // <-- Esto reaplica el cursor escalado
+        juego.aplicarCursor();
     }
 
     @Override public void pause() {}
