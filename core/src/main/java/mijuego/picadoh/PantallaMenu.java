@@ -83,6 +83,8 @@ public class PantallaMenu implements Screen {
             @Override
             public void clicked(InputEvent event, float x, float y) {
                 System.out.println(">>> BATALLA clickeada! Iniciando selección de tropa...");
+                juego.detenerMusica();                 // 🚫 Detenemos música del menú
+           // ▶️ Reproducimos música de selección
                 juego.setScreen(new PantallaSeleccionTropa(juego));
             }
         });
@@ -98,6 +100,7 @@ public class PantallaMenu implements Screen {
         stage.act(delta);
         stage.draw();
     }
+
     @Override
     public void resize(int width, int height) {
         stage.getViewport().update(width, height, true);

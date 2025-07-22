@@ -22,10 +22,11 @@ public class Principal extends Game {
 
     private boolean cursorPersonalizadoUsado = true;
 
-    // 🎵 Música principal global
+    // 🎵 Música global
     private Music musicaMenu;
+    private Music musicaSeleccion;
 
-    // 🔊 Volumen global (0.0f a 1.0f)
+    // 🔊 Volumen global
     private float volumenMusica = 1f;
 
     private boolean modoVentana = false;
@@ -36,15 +37,18 @@ public class Principal extends Game {
         aplicarCursor();
         setupVisorDeCoordenadas();
         cargarMusica();
-        reproducirMusica();
+        cargarMusicaSeleccion();
+        reproducirMusica(); // Menú por defecto
         setScreen(new PantallaMenu(this));
     }
 
-    // Cargar música una sola vez
+    // ───────────────────────────────
+    // 🎵 Música menú
+    // ───────────────────────────────
     private void cargarMusica() {
         musicaMenu = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/menus/musica_menu.mp3"));
         musicaMenu.setLooping(true);
-        musicaMenu.setVolume(volumenMusica); // Aplica el volumen actual
+        musicaMenu.setVolume(volumenMusica);
     }
 
     public void reproducirMusica() {
@@ -65,6 +69,36 @@ public class Principal extends Game {
         }
     }
 
+    // ───────────────────────────────
+    // 🎵 Música selección
+    // ───────────────────────────────
+    private void cargarMusicaSeleccion() {
+        musicaSeleccion = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/cartas/musica_seleccion.mp3"));
+        musicaSeleccion.setLooping(true);
+        musicaSeleccion.setVolume(volumenMusica);
+    }
+
+    public void reproducirMusicaSeleccion() {
+        if (musicaSeleccion != null && !musicaSeleccion.isPlaying()) {
+            musicaSeleccion.play();
+        }
+    }
+
+    public void pausarMusicaSeleccion() {
+        if (musicaSeleccion != null && musicaSeleccion.isPlaying()) {
+            musicaSeleccion.pause();
+        }
+    }
+
+    public void detenerMusicaSeleccion() {
+        if (musicaSeleccion != null) {
+            musicaSeleccion.stop();
+        }
+    }
+
+    // ───────────────────────────────
+    // 🔊 Volumen
+    // ───────────────────────────────
     public float getVolumenMusica() {
         return volumenMusica;
     }
@@ -74,8 +108,14 @@ public class Principal extends Game {
         if (musicaMenu != null) {
             musicaMenu.setVolume(this.volumenMusica);
         }
+        if (musicaSeleccion != null) {
+            musicaSeleccion.setVolume(this.volumenMusica);
+        }
     }
 
+    // ───────────────────────────────
+    // 🖱 Cursor personalizado
+    // ───────────────────────────────
     public void aplicarCursor() {
         if (cursorPersonalizadoUsado) {
             setCursorPersonalizado();
@@ -92,17 +132,13 @@ public class Principal extends Game {
 
         float refWidth = 1920f;
         float refHeight = 1080f;
-
         float scale = (screenWidth / refWidth + screenHeight / refHeight) / 2f;
 
         int newWidth = nextPowerOfTwo((int)(original.getWidth() * scale));
         int newHeight = nextPowerOfTwo((int)(original.getHeight() * scale));
 
         Pixmap scaled = new Pixmap(newWidth, newHeight, Pixmap.Format.RGBA8888);
-        scaled.drawPixmap(original,
-            0, 0, original.getWidth(), original.getHeight(),
-            0, 0, newWidth, newHeight
-        );
+        scaled.drawPixmap(original, 0, 0, original.getWidth(), original.getHeight(), 0, 0, newWidth, newHeight);
 
         int xHotspot = newWidth / 2;
         int yHotspot = newHeight / 6;
@@ -130,14 +166,9 @@ public class Principal extends Game {
         return power;
     }
 
-    public boolean isModoVentana() {
-        return modoVentana;
-    }
-
-    public void setModoVentana(boolean modoVentana) {
-        this.modoVentana = modoVentana;
-    }
-
+    // ───────────────────────────────
+    // 🧪 Visor de coordenadas
+    // ───────────────────────────────
     private void setupVisorDeCoordenadas() {
         coordenadasStage = new Stage(new ScreenViewport());
 
@@ -175,9 +206,16 @@ public class Principal extends Game {
     public void dispose() {
         batch.dispose();
         coordenadasStage.dispose();
-        if (musicaMenu != null) {
-            musicaMenu.dispose();
-        }
+        if (musicaMenu != null) musicaMenu.dispose();
+        if (musicaSeleccion != null) musicaSeleccion.dispose();
         super.dispose();
+    }
+
+    public boolean isModoVentana() {
+        return modoVentana;
+    }
+
+    public void setModoVentana(boolean modoVentana) {
+        this.modoVentana = modoVentana;
     }
 }

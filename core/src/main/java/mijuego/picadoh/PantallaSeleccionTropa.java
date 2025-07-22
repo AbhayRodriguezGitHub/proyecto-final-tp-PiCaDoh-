@@ -12,7 +12,9 @@ public class PantallaSeleccionTropa implements Screen {
     private final Principal juego;
     private Texture fondo;
 
-    private final List<String> todasLasCartas = Arrays.asList("(1)GUARDIANCITO", "(2)BARBOT", "(3)MAFIOSAROSA");
+    private final List<String> todasLasCartas = Arrays.asList(
+        "(1)GUARDIANCITO", "(2)BARBOT", "(3)MAFIOSAROSA"
+    );
     private final List<String> cartasElegidas = new ArrayList<>();
 
     private Texture carta1, carta2;
@@ -25,6 +27,10 @@ public class PantallaSeleccionTropa implements Screen {
     @Override
     public void show() {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/ELECCIONTROPA.png"));
+
+        // ✅ Reproducir música de selección
+        juego.reproducirMusicaSeleccion();
+
         generarNuevoParDeCartas();
 
         Gdx.input.setInputProcessor(new InputAdapter() {
@@ -67,6 +73,7 @@ public class PantallaSeleccionTropa implements Screen {
             for (String nombre : cartasElegidas) {
                 System.out.println(" - " + nombre);
             }
+
             juego.setScreen(new PantallaSeleccionEfecto(juego));
         } else {
             carta1.dispose();
