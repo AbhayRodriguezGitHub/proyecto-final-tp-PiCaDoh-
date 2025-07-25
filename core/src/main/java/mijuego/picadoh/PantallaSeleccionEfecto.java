@@ -6,19 +6,25 @@ import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.utils.ScreenUtils;
 
+import mijuego.picadoh.efectos.*;
+
 import java.util.*;
 
 public class PantallaSeleccionEfecto implements Screen {
     private final Principal juego;
     private Texture fondo;
 
-    private final List<String> todasLasCartasEfecto = Arrays.asList(
-        "ACELEREITOR", "SEÑORAARMADURA", "MAGIABENDITA", "EXPLOSIONFORZAL", "ESCUDOREAL"
+    private final List<Class<? extends CartaEfecto>> clasesEfecto = Arrays.asList(
+        ExplosionForzal.class,
+        SenoraArmadura.class,
+        MagiaBendita.class,
+        EscudoReal.class,
+        Acelereitor.class
     );
-    private final List<String> cartasEfectoElegidas = new ArrayList<>();
 
-    private Texture carta1, carta2;
-    private String carta1Nombre, carta2Nombre;
+    private final List<CartaEfecto> cartasEfectoElegidas = new ArrayList<>();
+
+    private CartaEfecto carta1, carta2;
 
     public PantallaSeleccionEfecto(Principal juego) {
         this.juego = juego;
@@ -34,17 +40,13 @@ public class PantallaSeleccionEfecto implements Screen {
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
 
-                // CARTA 1: desde X:338 hasta 918, Y:787 hasta 70
                 if (screenX >= 338 && screenX <= 918 && yInvertida >= 70 && yInvertida <= 787) {
-                    System.out.println("Elegiste efecto: " + carta1Nombre);
-                    cartasEfectoElegidas.add(carta1Nombre);
+                    System.out.println("Elegiste efecto: " + carta1.getNombre());
+                    cartasEfectoElegidas.add(carta1);
                     avanzarSeleccion();
-                }
-
-                // CARTA 2: desde X:1029 hasta 1601, Y:787 hasta 70
-                else if (screenX >= 1029 && screenX <= 1601 && yInvertida >= 70 && yInvertida <= 787) {
-                    System.out.println("Elegiste efecto: " + carta2Nombre);
-                    cartasEfectoElegidas.add(carta2Nombre);
+                } else if (screenX >= 1029 && screenX <= 1601 && yInvertida >= 70 && yInvertida <= 787) {
+                    System.out.println("Elegiste efecto: " + carta2.getNombre());
+                    cartasEfectoElegidas.add(carta2);
                     avanzarSeleccion();
                 }
 
@@ -54,33 +56,33 @@ public class PantallaSeleccionEfecto implements Screen {
     }
 
     private void generarNuevoParDeCartas() {
-        Random random = new Random();
+        // Repetimos hasta tener dos efectos distintos
+        Random rand = new Random();
+        try {
+            Class<? extends CartaEfecto> clase1 = clasesEfecto.get(rand.nextInt(clasesEfecto.size()));
+            Class<? extends CartaEfecto> clase2;
+            do {
+                clase2 = clasesEfecto.get(rand.nextInt(clasesEfecto.size()));
+            } while (clase1.equals(clase2));
 
-        // Elegir primera carta al azar
-        carta1Nombre = todasLasCartasEfecto.get(random.nextInt(todasLasCartasEfecto.size()));
+            carta1 = clase1.getDeclaredConstructor().newInstance();
+            carta2 = clase2.getDeclaredConstructor().newInstance();
 
-        // Elegir segunda carta distinta
-        do {
-            carta2Nombre = todasLasCartasEfecto.get(random.nextInt(todasLasCartasEfecto.size()));
-        } while (carta2Nombre.equals(carta1Nombre));
-
-        // Cargar texturas
-        carta1 = new Texture(Gdx.files.absolute("lwjgl3/assets/efectos/" + carta1Nombre + ".png"));
-        carta2 = new Texture(Gdx.files.absolute("lwjgl3/assets/efectos/" + carta2Nombre + ".png"));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
-
 
     private void avanzarSeleccion() {
         if (cartasEfectoElegidas.size() >= 7) {
             System.out.println(">>> Selección de efectos completa!");
-            for (String nombre : cartasEfectoElegidas) {
-                System.out.println(" - " + nombre);
+            for (CartaEfecto carta : cartasEfectoElegidas) {
+                System.out.println(" - " + carta.getNombre());
             }
 
-            // En el futuro: juego.setScreen(new PantallaBatalla(juego));
+            // En el futuro: juego.setScreen(new PantallaBatalla(juego, cartasElegidas, cartasEfectoElegidas));
         } else {
-            if (carta1 != null) carta1.dispose();
-            if (carta2 != null) carta2.dispose();
+            // Importante: no necesitamos hacer dispose de cartaX.getImagen() aquí porque no se reutilizan.
             generarNuevoParDeCartas();
         }
     }
@@ -90,10 +92,12 @@ public class PantallaSeleccionEfecto implements Screen {
         ScreenUtils.clear(0, 0, 0, 1);
         juego.batch.begin();
         juego.batch.draw(fondo, 0, 0, 1920, 1080);
+
         if (carta1 != null && carta2 != null) {
-            juego.batch.draw(carta1, 338, 70, 580, 717);  // Tamaño para carta 1
-            juego.batch.draw(carta2, 1029, 70, 572, 717); // Tamaño para carta 2
+            juego.batch.draw(carta1.getImagen(), 338, 70, 580, 717);
+            juego.batch.draw(carta2.getImagen(), 1029, 70, 572, 717);
         }
+
         juego.batch.end();
     }
 
@@ -105,6 +109,9 @@ public class PantallaSeleccionEfecto implements Screen {
     @Override
     public void dispose() {
         fondo.dispose();
+        for (CartaEfecto carta : cartasEfectoElegidas) {
+            carta.dispose();
+        }
         if (carta1 != null) carta1.dispose();
         if (carta2 != null) carta2.dispose();
     }

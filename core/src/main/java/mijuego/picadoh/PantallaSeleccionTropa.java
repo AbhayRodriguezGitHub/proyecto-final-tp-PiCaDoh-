@@ -5,6 +5,7 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.utils.ScreenUtils;
+import mijuego.picadoh.cartas.*;
 
 import java.util.*;
 
@@ -12,13 +13,15 @@ public class PantallaSeleccionTropa implements Screen {
     private final Principal juego;
     private Texture fondo;
 
-    private final List<String> todasLasCartas = Arrays.asList(
-        "(1)GUARDIANCITO", "(2)BARBOT", "(3)MAFIOSAROSA"
+    private final List<Class<? extends CartaTropa>> clasesDisponibles = Arrays.asList(
+        Guardiancito.class, Barbot.class, MafiosaRosa.class
     );
-    private final List<String> cartasElegidas = new ArrayList<>();
 
-    private Texture carta1, carta2;
-    private String carta1Nombre, carta2Nombre;
+    private final List<CartaTropa> cartasElegidas = new ArrayList<>();
+    private CartaTropa carta1, carta2;
+    private boolean esperandoTransicion = false;
+    private float tiempoDesdeClick = 0;
+    private CartaTropa cartaSeleccionada = null;
 
     public PantallaSeleccionTropa(Principal juego) {
         this.juego = juego;
@@ -27,29 +30,33 @@ public class PantallaSeleccionTropa implements Screen {
     @Override
     public void show() {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/ELECCIONTROPA.png"));
-
-        // ✅ Reproducir música de selección
-        juego.reproducirMusicaSeleccion();
+        juego.reproducirMusicaSeleccion(); // Activar música de selección
 
         generarNuevoParDeCartas();
 
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+                if (esperandoTransicion) return true;
+
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
 
-                // Click en CARTA 1 (izquierda)
                 if (screenX >= 335 && screenX <= 893 && yInvertida >= 77 && yInvertida <= 736) {
-                    System.out.println("Elegiste: " + carta1Nombre);
-                    cartasElegidas.add(carta1Nombre);
-                    avanzarSeleccion();
+                    cartaSeleccionada = carta1;
+                    System.out.println("Hiciste clic en la izquierda: " + carta1.getNombre());
+                } else if (screenX >= 1026 && screenX <= 1580 && yInvertida >= 77 && yInvertida <= 736) {
+                    cartaSeleccionada = carta2;
+                    System.out.println("Hiciste clic en la derecha: " + carta2.getNombre());
+                } else {
+                    cartaSeleccionada = null;
                 }
 
-                // Click en CARTA 2 (derecha)
-                else if (screenX >= 1026 && screenX <= 1580 && yInvertida >= 77 && yInvertida <= 736) {
-                    System.out.println("Elegiste: " + carta2Nombre);
-                    cartasElegidas.add(carta2Nombre);
-                    avanzarSeleccion();
+
+
+                if (cartaSeleccionada != null) {
+                    System.out.println("Elegiste: " + cartaSeleccionada.getNombre());
+                    esperandoTransicion = true;
+                    tiempoDesdeClick = 0;
                 }
 
                 return true;
@@ -57,28 +64,47 @@ public class PantallaSeleccionTropa implements Screen {
         });
     }
 
-    private void generarNuevoParDeCartas() {
-        List<String> copia = new ArrayList<>(todasLasCartas);
-        Collections.shuffle(copia);
-        carta1Nombre = copia.get(0);
-        carta2Nombre = copia.get(1);
-
-        carta1 = new Texture(Gdx.files.absolute("lwjgl3/assets/cartas/" + carta1Nombre + ".png"));
-        carta2 = new Texture(Gdx.files.absolute("lwjgl3/assets/cartas/" + carta2Nombre + ".png"));
-    }
-
     private void avanzarSeleccion() {
+        if (cartaSeleccionada != null) {
+            cartasElegidas.add(cartaSeleccionada);
+        }
+
+        if (carta1 != null) carta1.dispose();
+        if (carta2 != null) carta2.dispose();
+
+        carta1 = null;
+        carta2 = null;
+        cartaSeleccionada = null;
+
         if (cartasElegidas.size() >= 15) {
             System.out.println(">>> Selección completa! Cartas elegidas:");
-            for (String nombre : cartasElegidas) {
-                System.out.println(" - " + nombre);
+            for (CartaTropa carta : cartasElegidas) {
+                System.out.println(" - " + carta.getNombre());
             }
-
             juego.setScreen(new PantallaSeleccionEfecto(juego));
         } else {
-            carta1.dispose();
-            carta2.dispose();
             generarNuevoParDeCartas();
+        }
+    }
+
+    private void generarNuevoParDeCartas() {
+        try {
+            List<Class<? extends CartaTropa>> copia = new ArrayList<>(clasesDisponibles);
+            Collections.shuffle(copia);
+
+            Class<? extends CartaTropa> clase1 = copia.get(0);
+            Class<? extends CartaTropa> clase2 = copia.get(1);
+
+            carta1 = clase1.getDeclaredConstructor().newInstance();
+            carta2 = clase2.getDeclaredConstructor().newInstance();
+
+            System.out.println("Nuevo par generado:");
+            System.out.println(" - Izquierda: " + carta1.getNombre());
+            System.out.println(" - Derecha:   " + carta2.getNombre());
+        } catch (Exception e) {
+            e.printStackTrace();
+            carta1 = null;
+            carta2 = null;
         }
     }
 
@@ -87,11 +113,25 @@ public class PantallaSeleccionTropa implements Screen {
         ScreenUtils.clear(0, 0, 0, 1);
         juego.batch.begin();
         juego.batch.draw(fondo, 0, 0, 1920, 1080);
-        if (carta1 != null && carta2 != null) {
-            juego.batch.draw(carta1, 335, 77, 558, 659);  // X, Y, ancho, alto
-            juego.batch.draw(carta2, 1026, 77, 554, 659); // X, Y, ancho, alto
+
+        if (!esperandoTransicion) {
+            if (carta1 != null) {
+                juego.batch.draw(carta1.getImagen(), 335, 77, 558, 659);
+            }
+            if (carta2 != null) {
+                juego.batch.draw(carta2.getImagen(), 1026, 77, 554, 659);
+            }
         }
+
         juego.batch.end();
+
+        if (esperandoTransicion) {
+            tiempoDesdeClick += delta;
+            if (tiempoDesdeClick >= 0.25f) {
+                esperandoTransicion = false;
+                avanzarSeleccion();
+            }
+        }
     }
 
     @Override public void resize(int width, int height) {}
@@ -104,5 +144,8 @@ public class PantallaSeleccionTropa implements Screen {
         fondo.dispose();
         if (carta1 != null) carta1.dispose();
         if (carta2 != null) carta2.dispose();
+        for (CartaTropa carta : cartasElegidas) {
+            carta.dispose();
+        }
     }
 }

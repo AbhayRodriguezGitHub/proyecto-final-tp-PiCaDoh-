@@ -11,7 +11,6 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
-import com.badlogic.gdx.scenes.scene2d.Actor;
 
 public class PantallaMenu implements Screen {
     private final Principal juego;
@@ -52,9 +51,9 @@ public class PantallaMenu implements Screen {
         estiloInvisible.over = null;
         skin.add("default", estiloInvisible);
 
-        // 🔧 Botón invisible de CONFIGURACIÓN (tuerquita arriba izquierda)
+        // 🔧 Botón invisible de CONFIGURACIÓN (tuerquita abajo izquierda)
         TextButton btnConfig = new TextButton("", skin);
-        btnConfig.setBounds(20, 20, 80, 80); // Coordenadas originales
+        btnConfig.setBounds(20, 20, 80, 80);
         btnConfig.addListener(new ClickListener() {
             public void clicked(InputEvent event, float x, float y) {
                 System.out.println(">>> CONFIGURACIÓN clickeada!");
@@ -63,9 +62,22 @@ public class PantallaMenu implements Screen {
         });
         stage.addActor(btnConfig);
 
-        // ❌ Botón invisible para SALIR (parte media-inferior)
+        // 🔥 Botón BATALLA
+        TextButton btnBatalla = new TextButton("", skin);
+        btnBatalla.setBounds(320, 750, 640, 180);
+        btnBatalla.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                System.out.println(">>> BATALLA clickeada! Iniciando selección de tropa...");
+                juego.detenerMusica();
+                juego.setScreen(new PantallaSeleccionTropa(juego));
+            }
+        });
+        stage.addActor(btnBatalla);
+
+        // ❌ Botón SALIR
         TextButton btnSalir = new TextButton("", skin);
-        btnSalir.setBounds(400, 150, 500, 200); // Coordenadas originales
+        btnSalir.setBounds(320, 180, 640, 180);
         btnSalir.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
@@ -74,21 +86,6 @@ public class PantallaMenu implements Screen {
             }
         });
         stage.addActor(btnSalir);
-
-        // 🔥 Botón invisible para ir a BATALLA (selección de tropas)
-        TextButton btnBatalla = new TextButton("", skin);
-        btnBatalla.setPosition(Gdx.graphics.getWidth() * 0.166f, Gdx.graphics.getHeight() * 0.707f);
-        btnBatalla.setSize(Gdx.graphics.getWidth() * 0.333f, Gdx.graphics.getHeight() * 0.159f);
-        btnBatalla.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                System.out.println(">>> BATALLA clickeada! Iniciando selección de tropa...");
-                juego.detenerMusica();                 // 🚫 Detenemos música del menú
-           // ▶️ Reproducimos música de selección
-                juego.setScreen(new PantallaSeleccionTropa(juego));
-            }
-        });
-        stage.addActor(btnBatalla);
     }
 
     @Override
@@ -105,18 +102,7 @@ public class PantallaMenu implements Screen {
     public void resize(int width, int height) {
         stage.getViewport().update(width, height, true);
         juego.aplicarCursor();
-        for (Actor actor : stage.getActors()) {
-            if (actor instanceof TextButton) {
-                TextButton btn = (TextButton) actor;
-                if (btn.getListeners().size > 0 && btn.getListeners().first() instanceof ClickListener) {
-                    // Reubicar botón de batalla (asumiendo que es el único con ese tamaño aproximado)
-                    if (btn.getWidth() > 400 && btn.getHeight() > 100) {
-                        btn.setPosition(width * 0.166f, height * 0.707f);
-                        btn.setSize(width * 0.333f, height * 0.159f);
-                    }
-                }
-            }
-        }
+        // Ya no reposicionamos botones, respetamos las coordenadas absolutas
     }
 
     @Override public void pause() {}
