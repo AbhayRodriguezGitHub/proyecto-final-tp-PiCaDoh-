@@ -25,6 +25,9 @@ public class Principal extends Game {
     // 🎵 Música global
     private Music musicaMenu;
     private Music musicaSeleccion;
+    private Music musicaBatalla1;
+    private Music musicaBatalla2;
+    private Music musicaActual;
 
     // 🔊 Volumen global
     private float volumenMusica = 1f;
@@ -38,6 +41,7 @@ public class Principal extends Game {
         setupVisorDeCoordenadas();
         cargarMusica();
         cargarMusicaSeleccion();
+        cargarMusicaBatalla();
         reproducirMusica(); // Menú por defecto
         setScreen(new PantallaMenu(this));
     }
@@ -52,8 +56,16 @@ public class Principal extends Game {
     }
 
     public void reproducirMusica() {
-        if (musicaMenu != null && !musicaMenu.isPlaying()) {
+        if (musicaActual == musicaMenu && musicaMenu.isPlaying()) {
+            // Ya está sonando la música del menú, no reiniciar
+            return;
+        }
+        detenerMusicaActual();
+        if (musicaMenu != null) {
+            musicaMenu.setLooping(true);
+            musicaMenu.setVolume(volumenMusica);
             musicaMenu.play();
+            musicaActual = musicaMenu;
         }
     }
 
@@ -73,14 +85,18 @@ public class Principal extends Game {
     // 🎵 Música selección
     // ───────────────────────────────
     private void cargarMusicaSeleccion() {
-        musicaSeleccion = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/cartas/musica_seleccion.mp3"));
+        musicaSeleccion = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/menus/musica_seleccion.mp3"));
         musicaSeleccion.setLooping(true);
         musicaSeleccion.setVolume(volumenMusica);
     }
 
     public void reproducirMusicaSeleccion() {
-        if (musicaSeleccion != null && !musicaSeleccion.isPlaying()) {
+        detenerMusicaActual();
+        if (musicaSeleccion != null) {
+            musicaSeleccion.setLooping(true);
+            musicaSeleccion.setVolume(volumenMusica);
             musicaSeleccion.play();
+            musicaActual = musicaSeleccion;
         }
     }
 
@@ -97,6 +113,40 @@ public class Principal extends Game {
     }
 
     // ───────────────────────────────
+    // 🎵 Música batalla alternada
+    // ───────────────────────────────
+    private void cargarMusicaBatalla() {
+        musicaBatalla1 = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/campos/MUSICABATALLA1.mp3"));
+        musicaBatalla2 = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/campos/MUSICABATALLA2.mp3"));
+        musicaBatalla1.setVolume(volumenMusica);
+        musicaBatalla2.setVolume(volumenMusica);
+    }
+
+    public void reproducirMusicaBatalla() {
+        detenerMusicaActual();
+        reproducirMusicaEnBucleAlternado(musicaBatalla1, musicaBatalla2);
+    }
+
+    private void reproducirMusicaEnBucleAlternado(final Music m1, final Music m2) {
+        musicaActual = m1;
+        m1.play();
+        m1.setOnCompletionListener(music -> {
+            musicaActual = m2;
+            m2.play();
+        });
+
+        m2.setOnCompletionListener(music -> {
+            reproducirMusicaEnBucleAlternado(m1, m2);
+        });
+    }
+
+    public void detenerMusicaActual() {
+        if (musicaActual != null && musicaActual.isPlaying()) {
+            musicaActual.stop();
+        }
+    }
+
+    // ───────────────────────────────
     // 🔊 Volumen
     // ───────────────────────────────
     public float getVolumenMusica() {
@@ -105,12 +155,10 @@ public class Principal extends Game {
 
     public void setVolumenMusica(float volumen) {
         this.volumenMusica = MathUtils.clamp(volumen, 0f, 1f);
-        if (musicaMenu != null) {
-            musicaMenu.setVolume(this.volumenMusica);
-        }
-        if (musicaSeleccion != null) {
-            musicaSeleccion.setVolume(this.volumenMusica);
-        }
+        if (musicaMenu != null) musicaMenu.setVolume(volumenMusica);
+        if (musicaSeleccion != null) musicaSeleccion.setVolume(volumenMusica);
+        if (musicaBatalla1 != null) musicaBatalla1.setVolume(volumenMusica);
+        if (musicaBatalla2 != null) musicaBatalla2.setVolume(volumenMusica);
     }
 
     // ───────────────────────────────
@@ -208,6 +256,8 @@ public class Principal extends Game {
         coordenadasStage.dispose();
         if (musicaMenu != null) musicaMenu.dispose();
         if (musicaSeleccion != null) musicaSeleccion.dispose();
+        if (musicaBatalla1 != null) musicaBatalla1.dispose();
+        if (musicaBatalla2 != null) musicaBatalla2.dispose();
         super.dispose();
     }
 
@@ -219,3 +269,5 @@ public class Principal extends Game {
         this.modoVentana = modoVentana;
     }
 }
+
+

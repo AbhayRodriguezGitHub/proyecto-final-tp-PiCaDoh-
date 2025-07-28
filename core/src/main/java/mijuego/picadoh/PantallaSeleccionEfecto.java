@@ -6,6 +6,9 @@ import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.utils.ScreenUtils;
 
+import mijuego.picadoh.batalla.ContextoBatalla;
+import mijuego.picadoh.batalla.PantallaBatalla;
+import mijuego.picadoh.cartas.CartaTropa;
 import mijuego.picadoh.efectos.*;
 
 import java.util.*;
@@ -23,11 +26,14 @@ public class PantallaSeleccionEfecto implements Screen {
     );
 
     private final List<CartaEfecto> cartasEfectoElegidas = new ArrayList<>();
+    private final List<CartaTropa> cartasTropaSeleccionadas;
 
     private CartaEfecto carta1, carta2;
+    private boolean pantallaFinalizada = false; // ← para evitar múltiples llamadas
 
-    public PantallaSeleccionEfecto(Principal juego) {
+    public PantallaSeleccionEfecto(Principal juego, List<CartaTropa> cartasTropaSeleccionadas) {
         this.juego = juego;
+        this.cartasTropaSeleccionadas = cartasTropaSeleccionadas;
     }
 
     @Override
@@ -38,15 +44,19 @@ public class PantallaSeleccionEfecto implements Screen {
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+                if (pantallaFinalizada) return false;
+
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
 
                 if (screenX >= 338 && screenX <= 918 && yInvertida >= 70 && yInvertida <= 787) {
                     System.out.println("Elegiste efecto: " + carta1.getNombre());
                     cartasEfectoElegidas.add(carta1);
+                    carta2.dispose(); // solo se descarta la no elegida
                     avanzarSeleccion();
                 } else if (screenX >= 1029 && screenX <= 1601 && yInvertida >= 70 && yInvertida <= 787) {
                     System.out.println("Elegiste efecto: " + carta2.getNombre());
                     cartasEfectoElegidas.add(carta2);
+                    carta1.dispose();
                     avanzarSeleccion();
                 }
 
@@ -56,7 +66,6 @@ public class PantallaSeleccionEfecto implements Screen {
     }
 
     private void generarNuevoParDeCartas() {
-        // Repetimos hasta tener dos efectos distintos
         Random rand = new Random();
         try {
             Class<? extends CartaEfecto> clase1 = clasesEfecto.get(rand.nextInt(clasesEfecto.size()));
@@ -75,14 +84,19 @@ public class PantallaSeleccionEfecto implements Screen {
 
     private void avanzarSeleccion() {
         if (cartasEfectoElegidas.size() >= 7) {
+            if (pantallaFinalizada) return;
+            pantallaFinalizada = true;
+
             System.out.println(">>> Selección de efectos completa!");
             for (CartaEfecto carta : cartasEfectoElegidas) {
                 System.out.println(" - " + carta.getNombre());
             }
 
-            // En el futuro: juego.setScreen(new PantallaBatalla(juego, cartasElegidas, cartasEfectoElegidas));
+            ContextoBatalla contexto = new ContextoBatalla(cartasTropaSeleccionadas, new ArrayList<>(), 80, 80);
+            juego.setScreen(new PantallaBatalla(juego, contexto, cartasEfectoElegidas));
+            dispose(); // liberar recursos
+
         } else {
-            // Importante: no necesitamos hacer dispose de cartaX.getImagen() aquí porque no se reutilizan.
             generarNuevoParDeCartas();
         }
     }

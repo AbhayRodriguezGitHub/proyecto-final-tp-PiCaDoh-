@@ -30,7 +30,7 @@ public class PantallaSeleccionTropa implements Screen {
     @Override
     public void show() {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/ELECCIONTROPA.png"));
-        juego.reproducirMusicaSeleccion(); // Activar música de selección
+        juego.reproducirMusicaSeleccion(); // Música de selección
 
         generarNuevoParDeCartas();
 
@@ -50,8 +50,6 @@ public class PantallaSeleccionTropa implements Screen {
                 } else {
                     cartaSeleccionada = null;
                 }
-
-
 
                 if (cartaSeleccionada != null) {
                     System.out.println("Elegiste: " + cartaSeleccionada.getNombre());
@@ -81,7 +79,8 @@ public class PantallaSeleccionTropa implements Screen {
             for (CartaTropa carta : cartasElegidas) {
                 System.out.println(" - " + carta.getNombre());
             }
-            juego.setScreen(new PantallaSeleccionEfecto(juego));
+            // Pasa las cartas elegidas a la siguiente pantalla
+            juego.setScreen(new PantallaSeleccionEfecto(juego, cartasElegidas));
         } else {
             generarNuevoParDeCartas();
         }
