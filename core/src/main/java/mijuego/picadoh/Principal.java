@@ -47,7 +47,7 @@ public class Principal extends Game {
     }
 
     // ───────────────────────────────
-    // 🎵 Música menú
+    // Música menú
     // ───────────────────────────────
     private void cargarMusica() {
         musicaMenu = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/menus/musica_menu.mp3"));
@@ -82,7 +82,7 @@ public class Principal extends Game {
     }
 
     // ───────────────────────────────
-    // 🎵 Música selección
+    // Música selección
     // ───────────────────────────────
     private void cargarMusicaSeleccion() {
         musicaSeleccion = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/menus/musica_seleccion.mp3"));
@@ -113,7 +113,7 @@ public class Principal extends Game {
     }
 
     // ───────────────────────────────
-    // 🎵 Música batalla alternada
+    // Música batalla alternada
     // ───────────────────────────────
     private void cargarMusicaBatalla() {
         musicaBatalla1 = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/campos/MUSICABATALLA1.mp3"));
@@ -147,7 +147,7 @@ public class Principal extends Game {
     }
 
     // ───────────────────────────────
-    // 🔊 Volumen
+    // Volumen
     // ───────────────────────────────
     public float getVolumenMusica() {
         return volumenMusica;
@@ -162,7 +162,7 @@ public class Principal extends Game {
     }
 
     // ───────────────────────────────
-    // 🖱 Cursor personalizado
+    // Cursor personalizado
     // ───────────────────────────────
     public void aplicarCursor() {
         if (cursorPersonalizadoUsado) {
@@ -215,7 +215,7 @@ public class Principal extends Game {
     }
 
     // ───────────────────────────────
-    // 🧪 Visor de coordenadas
+    // Visor de coordenadas
     // ───────────────────────────────
     private void setupVisorDeCoordenadas() {
         coordenadasStage = new Stage(new ScreenViewport());

@@ -64,7 +64,7 @@ public class PantallaSeleccionTropa implements Screen {
 
     private void avanzarSeleccion() {
         if (cartaSeleccionada != null) {
-            cartasElegidas.add(cartaSeleccionada); // ⚠️ No hacer dispose() de esta carta
+            cartasElegidas.add(cartaSeleccionada); // No hacer dispose() de esta carta
         }
 
         // Solo dispose() de la carta que NO fue elegida
@@ -148,7 +148,5 @@ public class PantallaSeleccionTropa implements Screen {
         if (carta1 != null) carta1.dispose();
         if (carta2 != null) carta2.dispose();
 
-        // ⚠️ NO hagas dispose() de cartasElegidas: se usan en PantallaBatalla
-        // Las liberarás más tarde en la batalla
     }
 }
