@@ -3,12 +3,14 @@ package mijuego.picadoh.batalla;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import mijuego.picadoh.Principal;
-import mijuego.picadoh.efectos.CartaEfecto;
 import mijuego.picadoh.cartas.CartaTropa;
+import mijuego.picadoh.efectos.CartaEfecto;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -22,32 +24,45 @@ public class PantallaBatalla implements Screen {
     private final ContextoBatalla contexto;
     private final List<CartaEfecto> efectosDisponibles;
 
-    // === Datos de la mano de tropas ===
     private final List<CartaTropa> manoTropas;
     private CartaTropa cartaSeleccionada;
     private int cartaHoverIndex = -1;
 
-    // === Constantes de tamaño/posición de cartas en mano ===
+    private float cartaDragX = 0;
+    private float cartaDragY = 0;
+    private boolean arrastrando = false;
+
     private final float ANCHO_CARTA = 100f;
     private final float ALTURA_CARTA = 150f;
     private final float Y_CARTA_MANO = 40f;
 
+    private final Ranura[] ranuras;
+    private final ShapeRenderer shapeRenderer;
+    private Ranura ranuraHover = null;
+
     public PantallaBatalla(Principal juego, ContextoBatalla contexto, List<CartaEfecto> efectosDisponibles) {
         this.juego = juego;
         this.batch = new SpriteBatch();
+        this.shapeRenderer = new ShapeRenderer();
         this.fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/VALLEMISTICO.png"));
         this.contexto = contexto;
         this.efectosDisponibles = efectosDisponibles;
         this.manoTropas = new ArrayList<>();
 
-        // === Inicializar mano con 3 cartas al azar ===
         List<CartaTropa> disponibles = new ArrayList<>(contexto.getTropasPropias());
         Collections.shuffle(disponibles);
         for (int i = 0; i < 3 && i < disponibles.size(); i++) {
             manoTropas.add(disponibles.get(i));
         }
 
-        // === Input para selección y hover ===
+        ranuras = new Ranura[] {
+            new Ranura(36, 254, 267, 180),    // RANURA 1
+            new Ranura(437, 254, 267, 180),   // RANURA 2
+            new Ranura(833, 254, 267, 180),   // RANURA 3
+            new Ranura(1229, 254, 267, 180),  // RANURA 4
+            new Ranura(1615, 254, 270, 180)   // RANURA 5
+        };
+
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
@@ -57,9 +72,47 @@ public class PantallaBatalla implements Screen {
                     if (screenX >= x && screenX <= x + ANCHO_CARTA &&
                         yInvertida >= Y_CARTA_MANO && yInvertida <= Y_CARTA_MANO + ALTURA_CARTA + 30) {
                         cartaSeleccionada = manoTropas.get(i);
-                        System.out.println("Seleccionaste carta: " + cartaSeleccionada.getNombre());
-                        break;
+                        cartaDragX = screenX - ANCHO_CARTA / 2;
+                        cartaDragY = yInvertida - ALTURA_CARTA / 2;
+                        arrastrando = true;
+                        return true;
                     }
+                }
+                return false;
+            }
+
+            @Override
+            public boolean touchDragged(int screenX, int screenY, int pointer) {
+                if (arrastrando && cartaSeleccionada != null) {
+                    cartaDragX = screenX - ANCHO_CARTA / 2;
+                    cartaDragY = Gdx.graphics.getHeight() - screenY - ALTURA_CARTA / 2;
+
+                    int mouseY = Gdx.graphics.getHeight() - screenY;
+                    ranuraHover = null;
+                    for (Ranura ranura : ranuras) {
+                        if (ranura.contiene(screenX, mouseY) && ranura.getCarta() == null) {
+                            ranuraHover = ranura;
+                            break;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            @Override
+            public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+                if (arrastrando && cartaSeleccionada != null) {
+                    int mouseY = Gdx.graphics.getHeight() - screenY;
+                    for (Ranura ranura : ranuras) {
+                        if (ranura.contiene(screenX, mouseY) && ranura.getCarta() == null) {
+                            ranura.setCarta(cartaSeleccionada);
+                            manoTropas.remove(cartaSeleccionada);
+                            break;
+                        }
+                    }
+                    cartaSeleccionada = null;
+                    arrastrando = false;
+                    ranuraHover = null;
                 }
                 return true;
             }
@@ -79,10 +132,6 @@ public class PantallaBatalla implements Screen {
                 return false;
             }
         });
-
-        System.out.println("PantallaBatalla iniciada:");
-        System.out.println("Tropas en contexto: " + contexto.getTropasPropias().size());
-        System.out.println("Efectos disponibles: " + efectosDisponibles.size());
     }
 
     @Override
@@ -100,24 +149,41 @@ public class PantallaBatalla implements Screen {
         batch.begin();
         batch.draw(fondo, 0, 0, 1920, 1080);
 
-        // Dibujar cartas en la mano (tropas)
-        for (int i = 0; i < manoTropas.size(); i++) {
-            float x = 40 + i * (ANCHO_CARTA + 10);
-            float y = Y_CARTA_MANO;
-
-            if (i == cartaHoverIndex) {
-                y += 20;  // levantar carta al pasar el cursor
-            }
-
-            Texture img = manoTropas.get(i).getImagen();
-            if (img != null) {
-                batch.draw(img, x, y, ANCHO_CARTA, ALTURA_CARTA);
-            } else {
-                System.err.println("Imagen de carta null para: " + manoTropas.get(i).getNombre());
+        // Dibujar cartas en ranuras
+        for (Ranura ranura : ranuras) {
+            if (ranura.getCarta() != null) {
+                batch.draw(ranura.getCarta().getImagen(), ranura.getX(), ranura.getY(), ranura.getAncho(), ranura.getAlto());
             }
         }
 
+        // Dibujar cartas en mano
+        for (int i = 0; i < manoTropas.size(); i++) {
+            CartaTropa carta = manoTropas.get(i);
+            if (carta == cartaSeleccionada) continue;
+
+            float x = 40 + i * (ANCHO_CARTA + 10);
+            float y = Y_CARTA_MANO;
+            if (i == cartaHoverIndex) y += 20;
+
+            batch.draw(carta.getImagen(), x, y, ANCHO_CARTA, ALTURA_CARTA);
+        }
+
+        // Dibujar carta arrastrada
+        if (arrastrando && cartaSeleccionada != null) {
+            batch.draw(cartaSeleccionada.getImagen(), cartaDragX, cartaDragY, ANCHO_CARTA, ALTURA_CARTA);
+        }
+
         batch.end();
+
+        // === Dibujar iluminación de ranura ===
+        if (ranuraHover != null) {
+            Gdx.gl.glEnable(GL20.GL_BLEND);
+            shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+            shapeRenderer.setColor(new Color(0f, 0.6f, 1f, 0.3f));  // celeste transparente
+            shapeRenderer.rect(ranuraHover.getX(), ranuraHover.getY(), ranuraHover.getAncho(), ranuraHover.getAlto());
+            shapeRenderer.end();
+            Gdx.gl.glDisable(GL20.GL_BLEND);
+        }
     }
 
     @Override public void resize(int width, int height) {}
@@ -128,8 +194,8 @@ public class PantallaBatalla implements Screen {
     @Override
     public void dispose() {
         batch.dispose();
+        shapeRenderer.dispose();
         fondo.dispose();
-        // Puedes añadir manoTropas.forEach(c -> c.getImagen().dispose()); si cargas texturas nuevas dinámicamente.
     }
 
     public ContextoBatalla getContexto() {

@@ -64,11 +64,12 @@ public class PantallaSeleccionTropa implements Screen {
 
     private void avanzarSeleccion() {
         if (cartaSeleccionada != null) {
-            cartasElegidas.add(cartaSeleccionada);
+            cartasElegidas.add(cartaSeleccionada); // ⚠️ No hacer dispose() de esta carta
         }
 
-        if (carta1 != null) carta1.dispose();
-        if (carta2 != null) carta2.dispose();
+        // Solo dispose() de la carta que NO fue elegida
+        if (cartaSeleccionada == carta1 && carta2 != null) carta2.dispose();
+        if (cartaSeleccionada == carta2 && carta1 != null) carta1.dispose();
 
         carta1 = null;
         carta2 = null;
@@ -79,7 +80,8 @@ public class PantallaSeleccionTropa implements Screen {
             for (CartaTropa carta : cartasElegidas) {
                 System.out.println(" - " + carta.getNombre());
             }
-            // Pasa las cartas elegidas a la siguiente pantalla
+
+            // Pasar cartas seleccionadas a la siguiente pantalla
             juego.setScreen(new PantallaSeleccionEfecto(juego, cartasElegidas));
         } else {
             generarNuevoParDeCartas();
@@ -141,10 +143,12 @@ public class PantallaSeleccionTropa implements Screen {
     @Override
     public void dispose() {
         fondo.dispose();
+
+        // Solo dispose() de las cartas que quedaron visibles
         if (carta1 != null) carta1.dispose();
         if (carta2 != null) carta2.dispose();
-        for (CartaTropa carta : cartasElegidas) {
-            carta.dispose();
-        }
+
+        // ⚠️ NO hagas dispose() de cartasElegidas: se usan en PantallaBatalla
+        // Las liberarás más tarde en la batalla
     }
 }

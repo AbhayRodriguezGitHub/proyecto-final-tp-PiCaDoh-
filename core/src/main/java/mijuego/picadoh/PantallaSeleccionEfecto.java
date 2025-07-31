@@ -29,7 +29,7 @@ public class PantallaSeleccionEfecto implements Screen {
     private final List<CartaTropa> cartasTropaSeleccionadas;
 
     private CartaEfecto carta1, carta2;
-    private boolean pantallaFinalizada = false; // ← para evitar múltiples llamadas
+    private boolean pantallaFinalizada = false;
 
     public PantallaSeleccionEfecto(Principal juego, List<CartaTropa> cartasTropaSeleccionadas) {
         this.juego = juego;
@@ -51,7 +51,7 @@ public class PantallaSeleccionEfecto implements Screen {
                 if (screenX >= 338 && screenX <= 918 && yInvertida >= 70 && yInvertida <= 787) {
                     System.out.println("Elegiste efecto: " + carta1.getNombre());
                     cartasEfectoElegidas.add(carta1);
-                    carta2.dispose(); // solo se descarta la no elegida
+                    carta2.dispose();
                     avanzarSeleccion();
                 } else if (screenX >= 1029 && screenX <= 1601 && yInvertida >= 70 && yInvertida <= 787) {
                     System.out.println("Elegiste efecto: " + carta2.getNombre());
@@ -76,7 +76,6 @@ public class PantallaSeleccionEfecto implements Screen {
 
             carta1 = clase1.getDeclaredConstructor().newInstance();
             carta2 = clase2.getDeclaredConstructor().newInstance();
-
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -94,8 +93,7 @@ public class PantallaSeleccionEfecto implements Screen {
 
             ContextoBatalla contexto = new ContextoBatalla(cartasTropaSeleccionadas, new ArrayList<>(), 80, 80);
             juego.setScreen(new PantallaBatalla(juego, contexto, cartasEfectoElegidas));
-            dispose(); // liberar recursos
-
+            dispose();
         } else {
             generarNuevoParDeCartas();
         }
