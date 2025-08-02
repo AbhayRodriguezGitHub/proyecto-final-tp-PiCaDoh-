@@ -49,5 +49,10 @@ git clone https://github.com/AbhayRodriguezGitHub/proyecto-final-tp-PiCaDoh
 Ya Vamos por la Version 0.10 Del Proyecto. 
 Estamos en Desarollo del Corazon del Juego. (Mecanicas de la Batalla)
 Base del juego, Tanto Grafica como de Codigo ya Sentada.
+
+## TRAILER'S
+
+**TRAILER REVELACION:** https://youtu.be/O-qZURCp_TY
+
 ## Link del Wiki 
 [Haz click aqui!](https://github.com/AbhayRodriguezGitHub/proyecto-final-tp-PiCaDoh-/wiki)
