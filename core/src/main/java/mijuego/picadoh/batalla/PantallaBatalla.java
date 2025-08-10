@@ -36,7 +36,7 @@ public class PantallaBatalla implements Screen {
     private final float ALTURA_CARTA = 150f;
     private final float Y_CARTA_MANO = 40f;
 
-    private final Ranura[] ranuras;
+    private final List<Ranura> ranuras;
     private final ShapeRenderer shapeRenderer;
     private Ranura ranuraHover = null;
 
@@ -55,13 +55,21 @@ public class PantallaBatalla implements Screen {
             manoTropas.add(disponibles.get(i));
         }
 
-        ranuras = new Ranura[] {
-            new Ranura(36, 254, 267, 180),    // RANURA 1
-            new Ranura(437, 254, 267, 180),   // RANURA 2
-            new Ranura(833, 254, 267, 180),   // RANURA 3
-            new Ranura(1229, 254, 267, 180),  // RANURA 4
-            new Ranura(1615, 254, 270, 180)   // RANURA 5
-        };
+        ranuras = new ArrayList<>();
+
+        // Ranuras jugador
+        ranuras.add(new Ranura(36, 254, 267, 180, false));
+        ranuras.add(new Ranura(437, 254, 267, 180, false));
+        ranuras.add(new Ranura(833, 254, 267, 180, false));
+        ranuras.add(new Ranura(1229, 254, 267, 180, false));
+        ranuras.add(new Ranura(1615, 254, 270, 180, false));
+
+        // Ranuras enemigo (modo desarrollo)
+        ranuras.add(new Ranura(22, 645, 283, 183, true));
+        ranuras.add(new Ranura(412, 645, 286, 183, true));
+        ranuras.add(new Ranura(813, 645, 286, 183, true));
+        ranuras.add(new Ranura(1213, 645, 282, 183, true));
+        ranuras.add(new Ranura(1615, 645, 283, 183, true));
 
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
@@ -90,7 +98,7 @@ public class PantallaBatalla implements Screen {
                     int mouseY = Gdx.graphics.getHeight() - screenY;
                     ranuraHover = null;
                     for (Ranura ranura : ranuras) {
-                        if (ranura.contiene(screenX, mouseY) && ranura.getCarta() == null) {
+                        if (ranura.contiene(screenX, mouseY) && (ranura.getCarta() == null)) {
                             ranuraHover = ranura;
                             break;
                         }
@@ -105,8 +113,13 @@ public class PantallaBatalla implements Screen {
                     int mouseY = Gdx.graphics.getHeight() - screenY;
                     for (Ranura ranura : ranuras) {
                         if (ranura.contiene(screenX, mouseY) && ranura.getCarta() == null) {
+                            // Asignar la carta a la ranura
                             ranura.setCarta(cartaSeleccionada);
-                            manoTropas.remove(cartaSeleccionada);
+
+                            // Reducir usos de la carta y eliminar de mano si ya no quedan usos
+                            if (!cartaSeleccionada.invocar()) {
+                                manoTropas.remove(cartaSeleccionada);
+                            }
                             break;
                         }
                     }
@@ -175,11 +188,11 @@ public class PantallaBatalla implements Screen {
 
         batch.end();
 
-        // === Dibujar iluminación de ranura ===
+        // Iluminación de ranura hover
         if (ranuraHover != null) {
             Gdx.gl.glEnable(GL20.GL_BLEND);
             shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-            shapeRenderer.setColor(new Color(0f, 0.6f, 1f, 0.3f));  // celeste transparente
+            shapeRenderer.setColor(new Color(0f, 0.6f, 1f, 0.3f)); // Celeste transparente
             shapeRenderer.rect(ranuraHover.getX(), ranuraHover.getY(), ranuraHover.getAncho(), ranuraHover.getAlto());
             shapeRenderer.end();
             Gdx.gl.glDisable(GL20.GL_BLEND);
