@@ -7,6 +7,7 @@ import java.util.List;
 
 public class ContextoBatalla {
     private static final int MAX_TROPAS_EN_CAMPO = 5;
+    private static final int VIDA_MAXIMA = 80;
 
     private List<CartaTropa> tropasPropias;
     private List<CartaTropa> tropasEnemigas;
@@ -14,9 +15,15 @@ public class ContextoBatalla {
     private int vidaPropia;
     private int vidaEnemiga;
 
-    // ✅ NUEVO: carta seleccionada para aplicar efectos
+    // ✅ carta seleccionada para aplicar efectos
     private CartaTropa tropaSeleccionada;
 
+    // Constructor original (usa vida máxima por defecto)
+    public ContextoBatalla(List<CartaTropa> propias, List<CartaTropa> enemigas) {
+        this(propias, enemigas, VIDA_MAXIMA, VIDA_MAXIMA);
+    }
+
+    // ✅ Constructor nuevo con vidas personalizadas
     public ContextoBatalla(List<CartaTropa> propias, List<CartaTropa> enemigas, int vidaP, int vidaE) {
         this.tropasPropias = new ArrayList<>(propias);
         this.tropasEnemigas = new ArrayList<>(enemigas);
@@ -41,6 +48,10 @@ public class ContextoBatalla {
         return vidaEnemiga;
     }
 
+    public int getVidaMaxima() {
+        return VIDA_MAXIMA;
+    }
+
     // Vida
     public void restarVidaEnemiga(int cantidad) {
         vidaEnemiga -= cantidad;
@@ -50,6 +61,17 @@ public class ContextoBatalla {
     public void restarVidaPropia(int cantidad) {
         vidaPropia -= cantidad;
         if (vidaPropia < 0) vidaPropia = 0;
+    }
+
+    // Agregar setters para vida (para atajos debug)
+    public void setVidaPropia(int vida) {
+        this.vidaPropia = Math.min(vida, VIDA_MAXIMA);
+        if (this.vidaPropia < 0) this.vidaPropia = 0;
+    }
+
+    public void setVidaEnemiga(int vida) {
+        this.vidaEnemiga = Math.min(vida, VIDA_MAXIMA);
+        if (this.vidaEnemiga < 0) this.vidaEnemiga = 0;
     }
 
     // Tropas
@@ -77,7 +99,7 @@ public class ContextoBatalla {
         return tropasEnemigas.size() >= MAX_TROPAS_EN_CAMPO;
     }
 
-    // ✅ NUEVOS MÉTODOS
+    // Selección de tropa
     public void setTropaSeleccionada(CartaTropa tropa) {
         this.tropaSeleccionada = tropa;
     }

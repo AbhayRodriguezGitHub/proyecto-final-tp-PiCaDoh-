@@ -53,7 +53,20 @@ public abstract class CartaTropa {
         this.puedeAtacarDosVeces = puedeAtacarDosVeces;
     }
 
-    // NUEVOS MÉTODOS PARA MANEJAR USOS:
+    // --- Métodos compatibles con el código existente ---
+    public int getAtaque() {
+        return getAtk();
+    }
+
+    public int getDefensa() {
+        return getDef();
+    }
+
+    public void setDefensa(int def) {
+        setDef(def);
+    }
+
+    // --- Nuevos métodos para manejar usos ---
     public int getUsosRestantes() {
         return usosRestantes;
     }
