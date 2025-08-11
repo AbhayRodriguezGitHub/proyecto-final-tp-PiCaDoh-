@@ -94,6 +94,9 @@ public class PantallaBatalla implements Screen {
     private final float AREA_NIVELES_Y = 498f;
     private final float AREA_NIVELES_HEIGHT = 73f;
 
+    // NUEVO: control de fin de partida para no reentrar múltiples veces
+    private boolean partidaTerminada = false;
+
 
     public PantallaBatalla(Principal juego, ContextoBatalla contexto, List<CartaEfecto> efectosDisponibles) {
         this.juego = juego;
@@ -181,6 +184,7 @@ public class PantallaBatalla implements Screen {
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean keyDown(int keycode) {
+                if (partidaTerminada) return false; // bloquear inputs si ya terminó la partida
                 if (keycode == com.badlogic.gdx.Input.Keys.F1) {
                     contexto.setVidaPropia(contexto.getVidaMaxima());
                     contexto.setVidaEnemiga(contexto.getVidaMaxima());
@@ -206,7 +210,7 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-                if (batallaEnCurso) return false; // BLOQUEO durante batalla
+                if (batallaEnCurso || partidaTerminada) return false; // BLOQUEO durante batalla o si la partida terminó
 
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
 
@@ -235,7 +239,7 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchDragged(int screenX, int screenY, int pointer) {
-                if (batallaEnCurso) return false; // BLOQUEO durante batalla
+                if (batallaEnCurso || partidaTerminada) return false; // BLOQUEO durante batalla o fin de partida
 
                 if (arrastrando && cartaSeleccionada != null) {
                     cartaDragX = screenX - ANCHO_CARTA / 2;
@@ -255,7 +259,7 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchUp(int screenX, int screenY, int pointer, int button) {
-                if (batallaEnCurso) return false; // BLOQUEO durante batalla
+                if (batallaEnCurso || partidaTerminada) return false; // BLOQUEO durante batalla o fin de partida
 
                 if (arrastrando && cartaSeleccionada != null) {
                     int mouseY = Gdx.graphics.getHeight() - screenY;
@@ -284,9 +288,9 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean mouseMoved(int screenX, int screenY) {
-                if (batallaEnCurso) {
+                if (batallaEnCurso || partidaTerminada) {
                     cartaHoverIndex = -1;
-                    return false; // no mostrar hover durante batalla
+                    return false; // no mostrar hover durante batalla o fin de partida
                 }
 
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
@@ -364,17 +368,23 @@ public class PantallaBatalla implements Screen {
             contexto.restarVidaPropia(ranuraEnemigo.getCarta().getAtaque());
             System.out.println("[COMBATE] Ataque directo al jugador por " + ranuraEnemigo.getCarta().getAtaque() + " desde ranura enemiga " + (i + 1));
         }
+
+        // VERIFICAR CONDICIONES DE VICTORIA/DERROTA inmediatamente después de aplicar daño
+        verificarCondicionYTransicion();
     }
 
     @Override
     public void show() {
-        juego.detenerMusica();
         juego.detenerMusicaSeleccion();
         juego.reproducirMusicaBatalla();
     }
 
     @Override
     public void render(float delta) {
+        // Si la partida terminó, el flujo normal ya estará interrumpido porque se hizo setScreen desde verificarCondicionYTransicion.
+        // Aún así chequeamos partidaTerminada para no ejecutar lógica adicional.
+        if (partidaTerminada) return;
+
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
@@ -420,7 +430,7 @@ public class PantallaBatalla implements Screen {
         fuenteTurno.setColor(Color.BLACK);
         fuenteTurno.draw(batch, layoutTurno, textX, textY);
 
-        // --- Dibuja niveles disponibles (centrado en X=492..569, Y=1105..1262) en BLANCO ---
+        // --- Dibuja niveles disponibles ---
         dibujarNivelesDisponibles();
 
         batch.end();
@@ -488,6 +498,8 @@ public class PantallaBatalla implements Screen {
             System.out.println("[TURNO] Se alcanzó el turno máximo: " + turnoActual);
             // Aquí podrías agregar lógica para terminar batalla o mostrar mensaje
         }
+        // Verificamos condición al cambiar de turno también (por si hubo daño directo que mató)
+        verificarCondicionYTransicion();
         // Aquí podrías agregar lógica para invocar cartas o resetear estados para el nuevo turno
     }
 
@@ -500,6 +512,47 @@ public class PantallaBatalla implements Screen {
         }
         List<Integer> nivelesPermitidos = nivelesPorTurno.get(turnoActual - 1);
         return nivelesPermitidos.contains(carta.getNivel());
+    }
+
+    /**
+     * Verifica la condición de fin de partida y realiza la transición a la pantalla correspondiente.
+     * - Si la vida del enemigo llegó a 0 primero -> PantallaVictoria
+     * - Si la vida del jugador llegó a 0 primero  -> PantallaDerrota
+     *
+     * Nota: si ambas vidas quedan <= 0 simultáneamente, actualmente se considera DERROTA.
+     */
+    private void verificarCondicionYTransicion() {
+        if (partidaTerminada) return;
+
+        int vidaPropia = contexto.getVidaPropia();
+        int vidaEnemiga = contexto.getVidaEnemiga();
+
+        if (vidaEnemiga <= 0 && vidaPropia > 0) {
+            // VICTORIA
+            partidaTerminada = true;
+            System.out.println("[PARTIDA] VICTORIA detectada - cambio a PantallaVictoria");
+            // reproducir musica de victoria y cambiar pantalla
+            juego.reproducirMusicaVictoria();
+            juego.setScreen(new PantallaVictoria(juego));
+            return;
+        }
+
+        if (vidaPropia <= 0 && vidaEnemiga > 0) {
+            // DERROTA
+            partidaTerminada = true;
+            System.out.println("[PARTIDA] DERROTA detectada - cambio a PantallaDerrota");
+            juego.reproducirMusicaDerrota();
+            juego.setScreen(new PantallaDerrota(juego));
+            return;
+        }
+
+        if (vidaEnemiga <= 0 && vidaPropia <= 0) {
+            // Empate simultáneo: regla actual -> DERROTA (puedes cambiar esto)
+            partidaTerminada = true;
+            System.out.println("[PARTIDA] Ambos a 0 simultáneamente: aplicando regla -> DERROTA");
+            juego.reproducirMusicaDerrota();
+            juego.setScreen(new PantallaDerrota(juego));
+        }
     }
 
     private void dibujarNivelesDisponibles() {
