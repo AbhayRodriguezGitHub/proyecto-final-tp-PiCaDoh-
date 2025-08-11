@@ -10,14 +10,26 @@ public abstract class CartaTropa {
     protected Texture imagen;
     protected boolean puedeAtacarDosVeces = false;
 
-    // NUEVO ATRIBUTO:
+    // NUEVO ATRIBUTO: Nivel de la carta (1 a 5)
+    protected int nivel;
+
+    // NUEVO ATRIBUTO: Usos restantes para invocar
     private int usosRestantes;
 
-    public CartaTropa(String nombre, int atk, int def, String rutaImagen) {
+    /**
+     * Constructor para inicializar una carta de tropa
+     * @param nombre Nombre de la carta
+     * @param atk Ataque
+     * @param def Defensa
+     * @param rutaImagen Ruta absoluta a la imagen
+     * @param nivel Nivel de la carta (1 a 5)
+     */
+    public CartaTropa(String nombre, int atk, int def, String rutaImagen, int nivel) {
         this.nombre = nombre;
         this.atk = atk;
         this.def = def;
         this.imagen = new Texture(Gdx.files.absolute(rutaImagen));
+        this.nivel = nivel;
         this.usosRestantes = 2; // por defecto 2 usos para invocar en modo desarrollo
     }
 
@@ -66,7 +78,19 @@ public abstract class CartaTropa {
         setDef(def);
     }
 
-    // --- Nuevos métodos para manejar usos ---
+    // --- Nuevo método para obtener el nivel ---
+    public int getNivel() {
+        return nivel;
+    }
+
+    // --- Nuevo método para cambiar el nivel si es necesario ---
+    public void setNivel(int nivel) {
+        if (nivel >= 1 && nivel <= 5) {
+            this.nivel = nivel;
+        }
+    }
+
+    // --- Métodos para manejar usos ---
     public int getUsosRestantes() {
         return usosRestantes;
     }

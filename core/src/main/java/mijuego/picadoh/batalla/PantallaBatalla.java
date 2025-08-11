@@ -72,15 +72,28 @@ public class PantallaBatalla implements Screen {
     // Sistema de turnos
     private int turnoActual = 1;
 
-    // Fuente y layout para dibujar el turno (número)
+
+    private final List<List<Integer>> nivelesPorTurno = new ArrayList<>();
+
+
     private final BitmapFont fuenteTurno;
     private final GlyphLayout layoutTurno;
 
-    // Coordenadas para dibujar el número del turno
+
+    private final BitmapFont fuenteNiveles;
+    private final GlyphLayout layoutNiveles = new GlyphLayout();
+
     private final int TURNO_X = 727;
     private final int TURNO_Y = 515; // base Y para dibujo
     private final int TURNO_ANCHO = 68; // 795 - 727
     private final int TURNO_ALTO = 65;  // 580 - 515
+
+
+    private final float AREA_NIVELES_X = 1105f;
+    private final float AREA_NIVELES_WIDTH = 157f;
+    private final float AREA_NIVELES_Y = 498f;
+    private final float AREA_NIVELES_HEIGHT = 73f;
+
 
     public PantallaBatalla(Principal juego, ContextoBatalla contexto, List<CartaEfecto> efectosDisponibles) {
         this.juego = juego;
@@ -95,17 +108,28 @@ public class PantallaBatalla implements Screen {
         this.fuenteVida = new BitmapFont();
         this.layout = new GlyphLayout();
 
-        // --- Fuente mejorada para turno usando FreeTypeFontGenerator ---
+
         FreeTypeFontGenerator generator = new FreeTypeFontGenerator(Gdx.files.internal("lwjgl3/assets/fonts/arial.otf"));
         FreeTypeFontGenerator.FreeTypeFontParameter parameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
         parameter.size = 48;  // Tamaño de fuente en pixeles para nitidez
-        parameter.color = new Color(0.1f, 0.1f, 0.1f, 1f); // negro oscuro
         parameter.magFilter = Texture.TextureFilter.Linear;   // filtrado para suavizar
         parameter.minFilter = Texture.TextureFilter.Linear;
         this.fuenteTurno = generator.generateFont(parameter);
+
+        this.fuenteTurno.setColor(Color.BLACK);
         generator.dispose();
 
         this.layoutTurno = new GlyphLayout();
+
+
+        FreeTypeFontGenerator genNiv = new FreeTypeFontGenerator(Gdx.files.internal("lwjgl3/assets/fonts/arial.otf"));
+        FreeTypeFontGenerator.FreeTypeFontParameter pNiv = new FreeTypeFontGenerator.FreeTypeFontParameter();
+        pNiv.size = 28; // ajusta tamaño si es necesario
+        pNiv.magFilter = Texture.TextureFilter.Linear;
+        pNiv.minFilter = Texture.TextureFilter.Linear;
+        this.fuenteNiveles = genNiv.generateFont(pNiv);
+        this.fuenteNiveles.setColor(Color.WHITE);
+        genNiv.dispose();
 
         // Se agregan 3 cartas aleatorias a la mano del jugador al inicio
         List<CartaTropa> disponibles = new ArrayList<>(contexto.getTropasPropias());
@@ -129,6 +153,30 @@ public class PantallaBatalla implements Screen {
         ranuras.add(new Ranura(813, 645, 286, 183, true));
         ranuras.add(new Ranura(1213, 645, 282, 183, true));
         ranuras.add(new Ranura(1615, 645, 283, 183, true));
+
+        // Inicialización de niveles permitidos por turno (índice 0 = turno 1)
+        nivelesPorTurno.add(List.of(1));            // Turno 1
+        nivelesPorTurno.add(List.of(1, 2));         // Turno 2
+        nivelesPorTurno.add(List.of(1, 2));         // Turno 3
+        nivelesPorTurno.add(List.of(1, 2, 3));      // Turno 4
+        nivelesPorTurno.add(List.of(1, 2, 3));      // Turno 5
+        nivelesPorTurno.add(List.of(2, 3, 4));      // Turno 6
+        nivelesPorTurno.add(List.of(2, 3, 4));      // Turno 7
+        nivelesPorTurno.add(List.of(2, 4));         // Turno 8
+        nivelesPorTurno.add(List.of(3, 4));         // Turno 9
+        nivelesPorTurno.add(List.of(4, 5));         // Turno 10
+        nivelesPorTurno.add(List.of(4, 5));         // Turno 11
+        nivelesPorTurno.add(List.of(5));            // Turno 12
+        nivelesPorTurno.add(List.of(1, 5));         // Turno 13
+        nivelesPorTurno.add(List.of(1, 2, 5));      // Turno 14
+        nivelesPorTurno.add(List.of(1, 2, 3));      // Turno 15
+        nivelesPorTurno.add(List.of(1, 2, 3, 4));   // Turno 16
+        nivelesPorTurno.add(List.of(1, 3));         // Turno 17
+        nivelesPorTurno.add(List.of(2, 4));         // Turno 18
+        nivelesPorTurno.add(List.of(3, 5));         // Turno 19
+        nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));// Turno 20
+        nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));// Turno 21
+        nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));// Turno 22
 
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
@@ -213,9 +261,16 @@ public class PantallaBatalla implements Screen {
                     int mouseY = Gdx.graphics.getHeight() - screenY;
                     for (Ranura ranura : ranuras) {
                         if (ranura.contiene(screenX, mouseY) && ranura.getCarta() == null) {
-                            ranura.setCarta(cartaSeleccionada);
-                            if (!cartaSeleccionada.invocar()) {
-                                manoTropas.remove(cartaSeleccionada);
+                            // NUEVO: validación por niveles/turno
+                            if (puedeInvocarPorNivel(cartaSeleccionada)) {
+                                ranura.setCarta(cartaSeleccionada);
+                                if (!cartaSeleccionada.invocar()) {
+                                    manoTropas.remove(cartaSeleccionada);
+                                }
+                            } else {
+                                System.out.println("[INVOCACIÓN BLOQUEADA] No puedes invocar carta de nivel "
+                                    + cartaSeleccionada.getNivel() + " en el turno " + turnoActual);
+                                // Opcional: aquí agregar feedback visual/sonoro
                             }
                             break;
                         }
@@ -355,12 +410,18 @@ public class PantallaBatalla implements Screen {
             batch.draw(imgSiguiente, BOTON_PLAY_X, BOTON_PLAY_Y, BOTON_PLAY_ANCHO, BOTON_PLAY_ALTO);
         }
 
-        // Dibuja número de turno centrado en el área con fuente nítida
+        // --- Dibuja número de turno centrado en el área con fuente nítida (color NEGRO) ---
         String textoTurno = String.valueOf(turnoActual);
         layoutTurno.setText(fuenteTurno, textoTurno);
         float textX = TURNO_X + (TURNO_ANCHO - layoutTurno.width) / 2f;
         float textY = TURNO_Y + (TURNO_ALTO + layoutTurno.height) / 2f;
+
+        // nos aseguramos color NEGRO para el turno
+        fuenteTurno.setColor(Color.BLACK);
         fuenteTurno.draw(batch, layoutTurno, textX, textY);
+
+        // --- Dibuja niveles disponibles (centrado en X=492..569, Y=1105..1262) en BLANCO ---
+        dibujarNivelesDisponibles();
 
         batch.end();
 
@@ -430,6 +491,40 @@ public class PantallaBatalla implements Screen {
         // Aquí podrías agregar lógica para invocar cartas o resetear estados para el nuevo turno
     }
 
+    /**
+     * Comprueba si la carta puede invocarse según el nivel permitido en el turnoActual.
+     */
+    private boolean puedeInvocarPorNivel(CartaTropa carta) {
+        if (turnoActual < 1 || turnoActual > nivelesPorTurno.size()) {
+            return false; // Fuera de rango de turnos definidos
+        }
+        List<Integer> nivelesPermitidos = nivelesPorTurno.get(turnoActual - 1);
+        return nivelesPermitidos.contains(carta.getNivel());
+    }
+
+    private void dibujarNivelesDisponibles() {
+        if (turnoActual < 1 || turnoActual > nivelesPorTurno.size()) return;
+
+        List<Integer> nivelesPermitidos = nivelesPorTurno.get(turnoActual - 1);
+        if (nivelesPermitidos == null || nivelesPermitidos.isEmpty()) return;
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < nivelesPermitidos.size(); i++) {
+            sb.append(nivelesPermitidos.get(i));
+            if (i < nivelesPermitidos.size() - 1) sb.append(", ");
+        }
+        String texto = sb.toString();
+
+        layoutNiveles.setText(fuenteNiveles, texto);
+
+        float textX = AREA_NIVELES_X + (AREA_NIVELES_WIDTH - layoutNiveles.width) / 2f;
+        float textY = AREA_NIVELES_Y + (AREA_NIVELES_HEIGHT + layoutNiveles.height) / 2f;
+
+        fuenteNiveles.setColor(Color.WHITE);
+        fuenteNiveles.draw(batch, layoutNiveles, textX, textY);
+    }
+
+
     private void dibujarBarraVida() {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
@@ -485,6 +580,7 @@ public class PantallaBatalla implements Screen {
         imgSiguiente.dispose();
         fuenteVida.dispose();
         fuenteTurno.dispose();
+        fuenteNiveles.dispose();
     }
 
     public ContextoBatalla getContexto() {
