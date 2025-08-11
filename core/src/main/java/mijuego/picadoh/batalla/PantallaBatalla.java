@@ -10,6 +10,7 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
 import mijuego.picadoh.Principal;
 import mijuego.picadoh.cartas.CartaTropa;
 import mijuego.picadoh.efectos.CartaEfecto;
@@ -23,7 +24,7 @@ public class PantallaBatalla implements Screen {
     private final Principal juego;
     private final SpriteBatch batch;
     private final Texture fondo;
-    private final Texture imgSiguiente;  // <--- textura SIGUIENTE.png
+    private final Texture imgSiguiente;  // textura SIGUIENTE.png
     private final ContextoBatalla contexto;
     private final List<CartaEfecto> efectosDisponibles;
 
@@ -68,12 +69,25 @@ public class PantallaBatalla implements Screen {
     private final int BOTON_PLAY_ANCHO = 205;
     private final int BOTON_PLAY_ALTO = 220;
 
+    // Sistema de turnos
+    private int turnoActual = 1;
+
+    // Fuente y layout para dibujar el turno (número)
+    private final BitmapFont fuenteTurno;
+    private final GlyphLayout layoutTurno;
+
+    // Coordenadas para dibujar el número del turno
+    private final int TURNO_X = 727;
+    private final int TURNO_Y = 515; // base Y para dibujo
+    private final int TURNO_ANCHO = 68; // 795 - 727
+    private final int TURNO_ALTO = 65;  // 580 - 515
+
     public PantallaBatalla(Principal juego, ContextoBatalla contexto, List<CartaEfecto> efectosDisponibles) {
         this.juego = juego;
         this.batch = new SpriteBatch();
         this.shapeRenderer = new ShapeRenderer();
         this.fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/VALLEMISTICO.png"));
-        this.imgSiguiente = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/SIGUIENTE.png")); // cargar imagen SIGUIENTE
+        this.imgSiguiente = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/SIGUIENTE.png"));
         this.contexto = contexto;
         this.efectosDisponibles = efectosDisponibles;
         this.manoTropas = new ArrayList<>();
@@ -81,6 +95,19 @@ public class PantallaBatalla implements Screen {
         this.fuenteVida = new BitmapFont();
         this.layout = new GlyphLayout();
 
+        // --- Fuente mejorada para turno usando FreeTypeFontGenerator ---
+        FreeTypeFontGenerator generator = new FreeTypeFontGenerator(Gdx.files.internal("lwjgl3/assets/fonts/arial.otf"));
+        FreeTypeFontGenerator.FreeTypeFontParameter parameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
+        parameter.size = 48;  // Tamaño de fuente en pixeles para nitidez
+        parameter.color = new Color(0.1f, 0.1f, 0.1f, 1f); // negro oscuro
+        parameter.magFilter = Texture.TextureFilter.Linear;   // filtrado para suavizar
+        parameter.minFilter = Texture.TextureFilter.Linear;
+        this.fuenteTurno = generator.generateFont(parameter);
+        generator.dispose();
+
+        this.layoutTurno = new GlyphLayout();
+
+        // Se agregan 3 cartas aleatorias a la mano del jugador al inicio
         List<CartaTropa> disponibles = new ArrayList<>(contexto.getTropasPropias());
         Collections.shuffle(disponibles);
         for (int i = 0; i < 3 && i < disponibles.size(); i++) {
@@ -89,12 +116,14 @@ public class PantallaBatalla implements Screen {
 
         ranuras = new ArrayList<>();
 
+        // Ranuras propias (jugador)
         ranuras.add(new Ranura(36, 254, 267, 180, false));
         ranuras.add(new Ranura(437, 254, 267, 180, false));
         ranuras.add(new Ranura(833, 254, 267, 180, false));
         ranuras.add(new Ranura(1229, 254, 267, 180, false));
         ranuras.add(new Ranura(1615, 254, 270, 180, false));
 
+        // Ranuras enemigas
         ranuras.add(new Ranura(22, 645, 283, 183, true));
         ranuras.add(new Ranura(412, 645, 286, 183, true));
         ranuras.add(new Ranura(813, 645, 286, 183, true));
@@ -129,16 +158,19 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+                if (batallaEnCurso) return false; // BLOQUEO durante batalla
+
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
 
                 // Botón PLAY invisible
-                if (screenX >= 881 && screenX <= 1063 && yInvertida >= 480 && yInvertida <= 610) {
+                if (screenX >= BOTON_PLAY_X && screenX <= BOTON_PLAY_X + BOTON_PLAY_ANCHO &&
+                    yInvertida >= BOTON_PLAY_Y && yInvertida <= BOTON_PLAY_Y + BOTON_PLAY_ALTO) {
                     iniciarBatallaConSiguiente();
                     System.out.println("[INPUT] Botón PLAY presionado → inicia batalla");
                     return true;
                 }
 
-                // Selección de carta
+                // Selección de carta en mano
                 for (int i = 0; i < manoTropas.size(); i++) {
                     float x = 40 + i * (ANCHO_CARTA + 10);
                     if (screenX >= x && screenX <= x + ANCHO_CARTA &&
@@ -155,6 +187,8 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchDragged(int screenX, int screenY, int pointer) {
+                if (batallaEnCurso) return false; // BLOQUEO durante batalla
+
                 if (arrastrando && cartaSeleccionada != null) {
                     cartaDragX = screenX - ANCHO_CARTA / 2;
                     cartaDragY = Gdx.graphics.getHeight() - screenY - ALTURA_CARTA / 2;
@@ -173,6 +207,8 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+                if (batallaEnCurso) return false; // BLOQUEO durante batalla
+
                 if (arrastrando && cartaSeleccionada != null) {
                     int mouseY = Gdx.graphics.getHeight() - screenY;
                     for (Ranura ranura : ranuras) {
@@ -193,6 +229,11 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean mouseMoved(int screenX, int screenY) {
+                if (batallaEnCurso) {
+                    cartaHoverIndex = -1;
+                    return false; // no mostrar hover durante batalla
+                }
+
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
                 cartaHoverIndex = -1;
                 for (int i = 0; i < manoTropas.size(); i++) {
@@ -208,7 +249,7 @@ public class PantallaBatalla implements Screen {
         });
     }
 
-    // Método nuevo que inicia la batalla y activa el botón SIGUIENTE
+    // Método que inicia la batalla y muestra la imagen SIGUIENTE
     private void iniciarBatallaConSiguiente() {
         if (!batallaEnCurso) {
             ejecutarBatalla();
@@ -285,12 +326,14 @@ public class PantallaBatalla implements Screen {
         batch.begin();
         batch.draw(fondo, 0, 0, 1920, 1080);
 
+        // Dibuja cartas en ranuras
         for (Ranura ranura : ranuras) {
             if (ranura.getCarta() != null) {
                 batch.draw(ranura.getCarta().getImagen(), ranura.getX(), ranura.getY(), ranura.getAncho(), ranura.getAlto());
             }
         }
 
+        // Dibuja cartas en mano (excepto la que se está arrastrando)
         for (int i = 0; i < manoTropas.size(); i++) {
             CartaTropa carta = manoTropas.get(i);
             if (carta == cartaSeleccionada) continue;
@@ -302,6 +345,7 @@ public class PantallaBatalla implements Screen {
             batch.draw(carta.getImagen(), x, y, ANCHO_CARTA, ALTURA_CARTA);
         }
 
+        // Dibuja carta seleccionada arrastrando
         if (arrastrando && cartaSeleccionada != null) {
             batch.draw(cartaSeleccionada.getImagen(), cartaDragX, cartaDragY, ANCHO_CARTA, ALTURA_CARTA);
         }
@@ -311,10 +355,18 @@ public class PantallaBatalla implements Screen {
             batch.draw(imgSiguiente, BOTON_PLAY_X, BOTON_PLAY_Y, BOTON_PLAY_ANCHO, BOTON_PLAY_ALTO);
         }
 
+        // Dibuja número de turno centrado en el área con fuente nítida
+        String textoTurno = String.valueOf(turnoActual);
+        layoutTurno.setText(fuenteTurno, textoTurno);
+        float textX = TURNO_X + (TURNO_ANCHO - layoutTurno.width) / 2f;
+        float textY = TURNO_Y + (TURNO_ALTO + layoutTurno.height) / 2f;
+        fuenteTurno.draw(batch, layoutTurno, textX, textY);
+
         batch.end();
 
         dibujarBarraVida();
 
+        // Resalta ranura bajo el cursor al arrastrar carta
         if (ranuraHover != null) {
             Gdx.gl.glEnable(GL20.GL_BLEND);
             shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
@@ -336,7 +388,7 @@ public class PantallaBatalla implements Screen {
                     batallaEnCurso = false;
                     mostrarBotonSiguiente = false;
                     ranuraActual = -1;
-                    pasarSiguienteTurno();  // Aquí el método que avanzaría el turno
+                    pasarSiguienteTurno();
                 }
             }
 
@@ -347,37 +399,48 @@ public class PantallaBatalla implements Screen {
 
             switch (ranuraActual) {
                 case 0:
-                    shapeRenderer.rect(0, 230, 338, 630); break;
+                    shapeRenderer.rect(0, 230, 338, 630);
+                    break;
                 case 1:
-                    shapeRenderer.rect(370, 230, 385, 630); break;
+                    shapeRenderer.rect(370, 230, 385, 630);
+                    break;
                 case 2:
-                    shapeRenderer.rect(777, 230, 379, 630); break;
+                    shapeRenderer.rect(777, 230, 379, 630);
+                    break;
                 case 3:
-                    shapeRenderer.rect(1175, 230, 376, 630); break;
+                    shapeRenderer.rect(1175, 230, 376, 630);
+                    break;
                 case 4:
-                    shapeRenderer.rect(1562, 230, 357, 630); break;
+                    shapeRenderer.rect(1562, 230, 357, 630);
+                    break;
             }
             shapeRenderer.end();
             Gdx.gl.glDisable(GL20.GL_BLEND);
         }
     }
 
-    // Método de ejemplo para avanzar el turno y hacer lo que corresponda después de la batalla
     private void pasarSiguienteTurno() {
-        System.out.println("[TURNO] Batalla finalizada. Avanzando al siguiente turno...");
-        // Aquí puedes agregar lógica para invocar nuevas cartas, actualizar estado, etc.
-        // Por ahora solo un mensaje.
+        if (turnoActual < 22) {
+            turnoActual++;
+            System.out.println("[TURNO] Avanzando al turno " + turnoActual);
+        } else {
+            System.out.println("[TURNO] Se alcanzó el turno máximo: " + turnoActual);
+            // Aquí podrías agregar lógica para terminar batalla o mostrar mensaje
+        }
+        // Aquí podrías agregar lógica para invocar cartas o resetear estados para el nuevo turno
     }
 
     private void dibujarBarraVida() {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
+        // Barra jugador
         shapeRenderer.setColor(Color.BLACK);
         shapeRenderer.rect(VIDA_X_JUGADOR, VIDA_Y, VIDA_BARRA_ANCHO, VIDA_BARRA_ALTO);
         shapeRenderer.setColor(Color.WHITE);
         float anchoPerdidoJugador = VIDA_BARRA_ANCHO * (1 - (float) contexto.getVidaPropia() / contexto.getVidaMaxima());
         shapeRenderer.rect(VIDA_X_JUGADOR, VIDA_Y, anchoPerdidoJugador, VIDA_BARRA_ALTO);
 
+        // Barra enemigo
         shapeRenderer.setColor(Color.BLACK);
         shapeRenderer.rect(VIDA_X_ENEMIGO, VIDA_Y, VIDA_BARRA_ANCHO, VIDA_BARRA_ALTO);
         shapeRenderer.setColor(Color.WHITE);
@@ -421,6 +484,7 @@ public class PantallaBatalla implements Screen {
         fondo.dispose();
         imgSiguiente.dispose();
         fuenteVida.dispose();
+        fuenteTurno.dispose();
     }
 
     public ContextoBatalla getContexto() {
