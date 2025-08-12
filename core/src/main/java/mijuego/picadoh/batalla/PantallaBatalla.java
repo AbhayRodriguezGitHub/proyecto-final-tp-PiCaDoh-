@@ -25,6 +25,23 @@ public class PantallaBatalla implements Screen {
     private final SpriteBatch batch;
     private final Texture fondo;
     private final Texture imgSiguiente;  // textura SIGUIENTE.png
+    private Texture vida2Img;
+    private Texture vida3Img;
+    private Texture vida4Img;
+
+    // Coordenadas/tamaño imágenes de vida (JUGADOR)
+    private static final float VIDA_IMG_X = 347f;
+    private static final float VIDA_IMG_Y = 469f;
+    private static final float VIDA_IMG_W = 1908f - 1670f;
+    private static final float VIDA_IMG_H = 623f - 469f;
+
+
+    // Coordenadas/tamaño imágenes de vida (ENEMIGO)
+    private static final float VIDA_ENE_IMG_X = 1671f;
+    private static final float VIDA_ENE_IMG_Y = 469f;          // desde 469 a 623
+    private static final float VIDA_ENE_IMG_W = 1915f - 1675f; // 233
+    private static final float VIDA_ENE_IMG_H = 623f - 469f;   // 154
+
     private final ContextoBatalla contexto;
     private final List<CartaEfecto> efectosDisponibles;
 
@@ -72,13 +89,10 @@ public class PantallaBatalla implements Screen {
     // Sistema de turnos
     private int turnoActual = 1;
 
-
     private final List<List<Integer>> nivelesPorTurno = new ArrayList<>();
-
 
     private final BitmapFont fuenteTurno;
     private final GlyphLayout layoutTurno;
-
 
     private final BitmapFont fuenteNiveles;
     private final GlyphLayout layoutNiveles = new GlyphLayout();
@@ -88,7 +102,6 @@ public class PantallaBatalla implements Screen {
     private final int TURNO_ANCHO = 68; // 795 - 727
     private final int TURNO_ALTO = 65;  // 580 - 515
 
-
     private final float AREA_NIVELES_X = 1105f;
     private final float AREA_NIVELES_WIDTH = 157f;
     private final float AREA_NIVELES_Y = 498f;
@@ -97,20 +110,21 @@ public class PantallaBatalla implements Screen {
     // NUEVO: control de fin de partida para no reentrar múltiples veces
     private boolean partidaTerminada = false;
 
-
     public PantallaBatalla(Principal juego, ContextoBatalla contexto, List<CartaEfecto> efectosDisponibles) {
         this.juego = juego;
         this.batch = new SpriteBatch();
         this.shapeRenderer = new ShapeRenderer();
         this.fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/VALLEMISTICO.png"));
         this.imgSiguiente = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/SIGUIENTE.png"));
+        vida2Img = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/VIDA2.png"));
+        vida3Img = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/VIDA3.png"));
+        vida4Img = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/VIDA4.png"));
         this.contexto = contexto;
         this.efectosDisponibles = efectosDisponibles;
         this.manoTropas = new ArrayList<>();
 
         this.fuenteVida = new BitmapFont();
         this.layout = new GlyphLayout();
-
 
         FreeTypeFontGenerator generator = new FreeTypeFontGenerator(Gdx.files.internal("lwjgl3/assets/fonts/arial.otf"));
         FreeTypeFontGenerator.FreeTypeFontParameter parameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
@@ -123,7 +137,6 @@ public class PantallaBatalla implements Screen {
         generator.dispose();
 
         this.layoutTurno = new GlyphLayout();
-
 
         FreeTypeFontGenerator genNiv = new FreeTypeFontGenerator(Gdx.files.internal("lwjgl3/assets/fonts/arial.otf"));
         FreeTypeFontGenerator.FreeTypeFontParameter pNiv = new FreeTypeFontGenerator.FreeTypeFontParameter();
@@ -388,7 +401,13 @@ public class PantallaBatalla implements Screen {
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
+        // guardo vidaUsuario y vidaEnemigo antes de comenzar el batch para usarlos al final
+        int vidaUsuario = contexto.getVidaPropia();
+        int vidaEnemigo = contexto.getVidaEnemiga();
+
         batch.begin();
+
+        // primero el fondo
         batch.draw(fondo, 0, 0, 1920, 1080);
 
         // Dibuja cartas en ranuras
@@ -432,6 +451,31 @@ public class PantallaBatalla implements Screen {
 
         // --- Dibuja niveles disponibles ---
         dibujarNivelesDisponibles();
+
+        // ---- Imágenes de VIDA (jugador y enemigo) por umbrales ----
+        if (vida2Img != null && vida3Img != null && vida4Img != null) {
+            Gdx.gl.glEnable(GL20.GL_BLEND); // por si las imágenes tienen transparencia
+
+            // Jugador
+            if (vidaUsuario <= 50 && vidaUsuario > 20) {
+                batch.draw(vida2Img, VIDA_IMG_X, VIDA_IMG_Y, VIDA_IMG_W, VIDA_IMG_H);
+            } else if (vidaUsuario <= 20 && vidaUsuario > 0) {
+                batch.draw(vida3Img, VIDA_IMG_X, VIDA_IMG_Y, VIDA_IMG_W, VIDA_IMG_H);
+            } else if (vidaUsuario <= 0) {
+                batch.draw(vida4Img, VIDA_IMG_X, VIDA_IMG_Y, VIDA_IMG_W, VIDA_IMG_H);
+            }
+
+            // Enemigo
+            if (vidaEnemigo <= 50 && vidaEnemigo > 20) {
+                batch.draw(vida2Img, VIDA_ENE_IMG_X, VIDA_ENE_IMG_Y, VIDA_ENE_IMG_W, VIDA_ENE_IMG_H);
+            } else if (vidaEnemigo <= 20 && vidaEnemigo > 0) {
+                batch.draw(vida3Img, VIDA_ENE_IMG_X, VIDA_ENE_IMG_Y, VIDA_ENE_IMG_W, VIDA_ENE_IMG_H);
+            } else if (vidaEnemigo <= 0) {
+                batch.draw(vida4Img, VIDA_ENE_IMG_X, VIDA_ENE_IMG_Y, VIDA_ENE_IMG_W, VIDA_ENE_IMG_H);
+            }
+
+            Gdx.gl.glDisable(GL20.GL_BLEND);
+        }
 
         batch.end();
 
@@ -514,13 +558,6 @@ public class PantallaBatalla implements Screen {
         return nivelesPermitidos.contains(carta.getNivel());
     }
 
-    /**
-     * Verifica la condición de fin de partida y realiza la transición a la pantalla correspondiente.
-     * - Si la vida del enemigo llegó a 0 primero -> PantallaVictoria
-     * - Si la vida del jugador llegó a 0 primero  -> PantallaDerrota
-     *
-     * Nota: si ambas vidas quedan <= 0 simultáneamente, actualmente se considera DERROTA.
-     */
     private void verificarCondicionYTransicion() {
         if (partidaTerminada) return;
 
@@ -576,7 +613,6 @@ public class PantallaBatalla implements Screen {
         fuenteNiveles.setColor(Color.WHITE);
         fuenteNiveles.draw(batch, layoutNiveles, textX, textY);
     }
-
 
     private void dibujarBarraVida() {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
@@ -634,6 +670,10 @@ public class PantallaBatalla implements Screen {
         fuenteVida.dispose();
         fuenteTurno.dispose();
         fuenteNiveles.dispose();
+        if (vida2Img != null) vida2Img.dispose();
+        if (vida3Img != null) vida3Img.dispose();
+        if (vida4Img != null) vida4Img.dispose();
+
     }
 
     public ContextoBatalla getContexto() {
