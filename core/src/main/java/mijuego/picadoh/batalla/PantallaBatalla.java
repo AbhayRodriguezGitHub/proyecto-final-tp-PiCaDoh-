@@ -35,17 +35,22 @@ public class PantallaBatalla implements Screen {
     private static final float VIDA_IMG_W = 1908f - 1670f;
     private static final float VIDA_IMG_H = 623f - 469f;
 
-
     // Coordenadas/tamaño imágenes de vida (ENEMIGO)
     private static final float VIDA_ENE_IMG_X = 1671f;
-    private static final float VIDA_ENE_IMG_Y = 469f;          // desde 469 a 623
-    private static final float VIDA_ENE_IMG_W = 1915f - 1675f; // 233
-    private static final float VIDA_ENE_IMG_H = 623f - 469f;   // 154
+    private static final float VIDA_ENE_IMG_Y = 469f;
+    private static final float VIDA_ENE_IMG_W = 1915f - 1675f;
+    private static final float VIDA_ENE_IMG_H = 623f - 469f;
 
     private final ContextoBatalla contexto;
-    private final List<CartaEfecto> efectosDisponibles;
+    private final List<CartaEfecto> efectosDisponibles; // selección del jugador (7)
 
+    // ======= Mano / Mazos =======
     private final List<CartaTropa> manoTropas;
+    private final List<CartaEfecto> manoEfectos; // mano de efectos (se dibuja a la derecha)
+
+    private final List<CartaTropa> mazoTropasRestantes;    // tropas por robar
+    private final List<CartaEfecto> mazoEfectosRestantes;  // efectos por robar
+
     private CartaTropa cartaSeleccionada;
     private int cartaHoverIndex = -1;
 
@@ -55,7 +60,18 @@ public class PantallaBatalla implements Screen {
 
     private final float ANCHO_CARTA = 100f;
     private final float ALTURA_CARTA = 150f;
+
+    // Límite de cartas en mano
+    private static final int MAX_CARTAS_MANO = 7;
+
+    // Mano TROPAS (abajo-izquierda)
     private final float Y_CARTA_MANO = 40f;
+    private final float TROPAS_X_INICIO = 0f;     // << arranca en la punta izquierda
+    private final float ESPACIO_CARTAS = 10f;
+
+    // Mano EFECTOS (abajo-derecha)
+    private final float Y_CARTA_MANO_DERECHA = 40f;
+    private final float EFECTOS_BORDE_DER = 1920f; // << anclado al borde derecho
 
     private final List<Ranura> ranuras;
     private final ShapeRenderer shapeRenderer;
@@ -87,6 +103,7 @@ public class PantallaBatalla implements Screen {
     private final int BOTON_PLAY_ALTO = 220;
 
     // Sistema de turnos
+    private static final int MAX_TURNO = 22;
     private int turnoActual = 1;
 
     private final List<List<Integer>> nivelesPorTurno = new ArrayList<>();
@@ -98,16 +115,16 @@ public class PantallaBatalla implements Screen {
     private final GlyphLayout layoutNiveles = new GlyphLayout();
 
     private final int TURNO_X = 727;
-    private final int TURNO_Y = 515; // base Y para dibujo
-    private final int TURNO_ANCHO = 68; // 795 - 727
-    private final int TURNO_ALTO = 65;  // 580 - 515
+    private final int TURNO_Y = 515;
+    private final int TURNO_ANCHO = 68;
+    private final int TURNO_ALTO = 65;
 
     private final float AREA_NIVELES_X = 1105f;
     private final float AREA_NIVELES_WIDTH = 157f;
     private final float AREA_NIVELES_Y = 498f;
     private final float AREA_NIVELES_HEIGHT = 73f;
 
-    // NUEVO: control de fin de partida para no reentrar múltiples veces
+    // Control de fin de partida
     private boolean partidaTerminada = false;
 
     public PantallaBatalla(Principal juego, ContextoBatalla contexto, List<CartaEfecto> efectosDisponibles) {
@@ -121,15 +138,33 @@ public class PantallaBatalla implements Screen {
         vida4Img = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/VIDA4.png"));
         this.contexto = contexto;
         this.efectosDisponibles = efectosDisponibles;
+
+        // ======= Inicialización de manos y mazos =======
         this.manoTropas = new ArrayList<>();
+        this.manoEfectos = new ArrayList<>();
+
+        // Empezamos con todas las tropas disponibles del jugador
+        List<CartaTropa> disponibles = new ArrayList<>(contexto.getTropasPropias());
+        Collections.shuffle(disponibles);
+
+        // Robar 3 iniciales a la mano con límite
+        for (int i = 0; i < 3 && !disponibles.isEmpty() && manoTropas.size() < MAX_CARTAS_MANO; i++) {
+            manoTropas.add(disponibles.remove(0));
+        }
+        // Lo que queda se convierte en el mazo de robo por turnos
+        this.mazoTropasRestantes = new ArrayList<>(disponibles);
+
+        // Efectos: todos van al mazo; mano empieza vacía
+        this.mazoEfectosRestantes = new ArrayList<>(efectosDisponibles);
+        Collections.shuffle(this.mazoEfectosRestantes);
 
         this.fuenteVida = new BitmapFont();
         this.layout = new GlyphLayout();
 
         FreeTypeFontGenerator generator = new FreeTypeFontGenerator(Gdx.files.internal("lwjgl3/assets/fonts/arial.otf"));
         FreeTypeFontGenerator.FreeTypeFontParameter parameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        parameter.size = 48;  // Tamaño de fuente en pixeles para nitidez
-        parameter.magFilter = Texture.TextureFilter.Linear;   // filtrado para suavizar
+        parameter.size = 48;
+        parameter.magFilter = Texture.TextureFilter.Linear;
         parameter.minFilter = Texture.TextureFilter.Linear;
         this.fuenteTurno = generator.generateFont(parameter);
 
@@ -140,19 +175,12 @@ public class PantallaBatalla implements Screen {
 
         FreeTypeFontGenerator genNiv = new FreeTypeFontGenerator(Gdx.files.internal("lwjgl3/assets/fonts/arial.otf"));
         FreeTypeFontGenerator.FreeTypeFontParameter pNiv = new FreeTypeFontGenerator.FreeTypeFontParameter();
-        pNiv.size = 28; // ajusta tamaño si es necesario
+        pNiv.size = 28;
         pNiv.magFilter = Texture.TextureFilter.Linear;
         pNiv.minFilter = Texture.TextureFilter.Linear;
         this.fuenteNiveles = genNiv.generateFont(pNiv);
         this.fuenteNiveles.setColor(Color.WHITE);
         genNiv.dispose();
-
-        // Se agregan 3 cartas aleatorias a la mano del jugador al inicio
-        List<CartaTropa> disponibles = new ArrayList<>(contexto.getTropasPropias());
-        Collections.shuffle(disponibles);
-        for (int i = 0; i < 3 && i < disponibles.size(); i++) {
-            manoTropas.add(disponibles.get(i));
-        }
 
         ranuras = new ArrayList<>();
 
@@ -170,34 +198,34 @@ public class PantallaBatalla implements Screen {
         ranuras.add(new Ranura(1213, 645, 282, 183, true));
         ranuras.add(new Ranura(1615, 645, 283, 183, true));
 
-        // Inicialización de niveles permitidos por turno (índice 0 = turno 1)
-        nivelesPorTurno.add(List.of(1));            // Turno 1
-        nivelesPorTurno.add(List.of(1, 2));         // Turno 2
-        nivelesPorTurno.add(List.of(1, 2));         // Turno 3
-        nivelesPorTurno.add(List.of(1, 2, 3));      // Turno 4
-        nivelesPorTurno.add(List.of(1, 2, 3));      // Turno 5
-        nivelesPorTurno.add(List.of(2, 3, 4));      // Turno 6
-        nivelesPorTurno.add(List.of(2, 3, 4));      // Turno 7
-        nivelesPorTurno.add(List.of(2, 4));         // Turno 8
-        nivelesPorTurno.add(List.of(3, 4));         // Turno 9
-        nivelesPorTurno.add(List.of(4, 5));         // Turno 10
-        nivelesPorTurno.add(List.of(4, 5));         // Turno 11
-        nivelesPorTurno.add(List.of(5));            // Turno 12
-        nivelesPorTurno.add(List.of(1, 5));         // Turno 13
-        nivelesPorTurno.add(List.of(1, 2, 5));      // Turno 14
-        nivelesPorTurno.add(List.of(1, 2, 3));      // Turno 15
-        nivelesPorTurno.add(List.of(1, 2, 3, 4));   // Turno 16
-        nivelesPorTurno.add(List.of(1, 3));         // Turno 17
-        nivelesPorTurno.add(List.of(2, 4));         // Turno 18
-        nivelesPorTurno.add(List.of(3, 5));         // Turno 19
-        nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));// Turno 20
-        nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));// Turno 21
-        nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));// Turno 22
+        // Niveles por turno
+        nivelesPorTurno.add(List.of(1));
+        nivelesPorTurno.add(List.of(1, 2));
+        nivelesPorTurno.add(List.of(1, 2));
+        nivelesPorTurno.add(List.of(1, 2, 3));
+        nivelesPorTurno.add(List.of(1, 2, 3));
+        nivelesPorTurno.add(List.of(2, 3, 4));
+        nivelesPorTurno.add(List.of(2, 3, 4));
+        nivelesPorTurno.add(List.of(2, 4));
+        nivelesPorTurno.add(List.of(3, 4));
+        nivelesPorTurno.add(List.of(4, 5));
+        nivelesPorTurno.add(List.of(4, 5));
+        nivelesPorTurno.add(List.of(5));
+        nivelesPorTurno.add(List.of(1, 5));
+        nivelesPorTurno.add(List.of(1, 2, 5));
+        nivelesPorTurno.add(List.of(1, 2, 3));
+        nivelesPorTurno.add(List.of(1, 2, 3, 4));
+        nivelesPorTurno.add(List.of(1, 3));
+        nivelesPorTurno.add(List.of(2, 4));
+        nivelesPorTurno.add(List.of(3, 5));
+        nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));
+        nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));
+        nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));
 
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean keyDown(int keycode) {
-                if (partidaTerminada) return false; // bloquear inputs si ya terminó la partida
+                if (partidaTerminada) return false;
                 if (keycode == com.badlogic.gdx.Input.Keys.F1) {
                     contexto.setVidaPropia(contexto.getVidaMaxima());
                     contexto.setVidaEnemiga(contexto.getVidaMaxima());
@@ -223,7 +251,7 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-                if (batallaEnCurso || partidaTerminada) return false; // BLOQUEO durante batalla o si la partida terminó
+                if (batallaEnCurso || partidaTerminada) return false;
 
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
 
@@ -235,9 +263,9 @@ public class PantallaBatalla implements Screen {
                     return true;
                 }
 
-                // Selección de carta en mano
+                // Selección de carta en mano (solo TROPAS por ahora)
                 for (int i = 0; i < manoTropas.size(); i++) {
-                    float x = 40 + i * (ANCHO_CARTA + 10);
+                    float x = TROPAS_X_INICIO + i * (ANCHO_CARTA + ESPACIO_CARTAS);
                     if (screenX >= x && screenX <= x + ANCHO_CARTA &&
                         yInvertida >= Y_CARTA_MANO && yInvertida <= Y_CARTA_MANO + ALTURA_CARTA + 30) {
                         cartaSeleccionada = manoTropas.get(i);
@@ -252,7 +280,7 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchDragged(int screenX, int screenY, int pointer) {
-                if (batallaEnCurso || partidaTerminada) return false; // BLOQUEO durante batalla o fin de partida
+                if (batallaEnCurso || partidaTerminada) return false;
 
                 if (arrastrando && cartaSeleccionada != null) {
                     cartaDragX = screenX - ANCHO_CARTA / 2;
@@ -272,13 +300,12 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchUp(int screenX, int screenY, int pointer, int button) {
-                if (batallaEnCurso || partidaTerminada) return false; // BLOQUEO durante batalla o fin de partida
+                if (batallaEnCurso || partidaTerminada) return false;
 
                 if (arrastrando && cartaSeleccionada != null) {
                     int mouseY = Gdx.graphics.getHeight() - screenY;
                     for (Ranura ranura : ranuras) {
                         if (ranura.contiene(screenX, mouseY) && ranura.getCarta() == null) {
-                            // NUEVO: validación por niveles/turno
                             if (puedeInvocarPorNivel(cartaSeleccionada)) {
                                 ranura.setCarta(cartaSeleccionada);
                                 if (!cartaSeleccionada.invocar()) {
@@ -287,7 +314,6 @@ public class PantallaBatalla implements Screen {
                             } else {
                                 System.out.println("[INVOCACIÓN BLOQUEADA] No puedes invocar carta de nivel "
                                     + cartaSeleccionada.getNivel() + " en el turno " + turnoActual);
-                                // Opcional: aquí agregar feedback visual/sonoro
                             }
                             break;
                         }
@@ -303,13 +329,13 @@ public class PantallaBatalla implements Screen {
             public boolean mouseMoved(int screenX, int screenY) {
                 if (batallaEnCurso || partidaTerminada) {
                     cartaHoverIndex = -1;
-                    return false; // no mostrar hover durante batalla o fin de partida
+                    return false;
                 }
 
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
                 cartaHoverIndex = -1;
                 for (int i = 0; i < manoTropas.size(); i++) {
-                    float x = 40 + i * (ANCHO_CARTA + 10);
+                    float x = TROPAS_X_INICIO + i * (ANCHO_CARTA + ESPACIO_CARTAS);
                     if (screenX >= x && screenX <= x + ANCHO_CARTA &&
                         yInvertida >= Y_CARTA_MANO && yInvertida <= Y_CARTA_MANO + ALTURA_CARTA + 30) {
                         cartaHoverIndex = i;
@@ -382,7 +408,6 @@ public class PantallaBatalla implements Screen {
             System.out.println("[COMBATE] Ataque directo al jugador por " + ranuraEnemigo.getCarta().getAtaque() + " desde ranura enemiga " + (i + 1));
         }
 
-        // VERIFICAR CONDICIONES DE VICTORIA/DERROTA inmediatamente después de aplicar daño
         verificarCondicionYTransicion();
     }
 
@@ -394,69 +419,66 @@ public class PantallaBatalla implements Screen {
 
     @Override
     public void render(float delta) {
-        // Si la partida terminó, el flujo normal ya estará interrumpido porque se hizo setScreen desde verificarCondicionYTransicion.
-        // Aún así chequeamos partidaTerminada para no ejecutar lógica adicional.
         if (partidaTerminada) return;
 
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        // guardo vidaUsuario y vidaEnemigo antes de comenzar el batch para usarlos al final
         int vidaUsuario = contexto.getVidaPropia();
         int vidaEnemigo = contexto.getVidaEnemiga();
 
         batch.begin();
 
-        // primero el fondo
+        // Fondo
         batch.draw(fondo, 0, 0, 1920, 1080);
 
-        // Dibuja cartas en ranuras
+        // Cartas en ranuras
         for (Ranura ranura : ranuras) {
             if (ranura.getCarta() != null) {
                 batch.draw(ranura.getCarta().getImagen(), ranura.getX(), ranura.getY(), ranura.getAncho(), ranura.getAlto());
             }
         }
 
-        // Dibuja cartas en mano (excepto la que se está arrastrando)
+        // Mano TROPAS (excepto la que se arrastra)
         for (int i = 0; i < manoTropas.size(); i++) {
             CartaTropa carta = manoTropas.get(i);
             if (carta == cartaSeleccionada) continue;
 
-            float x = 40 + i * (ANCHO_CARTA + 10);
+            float x = TROPAS_X_INICIO + i * (ANCHO_CARTA + ESPACIO_CARTAS);
             float y = Y_CARTA_MANO;
             if (i == cartaHoverIndex) y += 20;
 
             batch.draw(carta.getImagen(), x, y, ANCHO_CARTA, ALTURA_CARTA);
         }
 
-        // Dibuja carta seleccionada arrastrando
+        // Carta Tropa arrastrando
         if (arrastrando && cartaSeleccionada != null) {
             batch.draw(cartaSeleccionada.getImagen(), cartaDragX, cartaDragY, ANCHO_CARTA, ALTURA_CARTA);
         }
 
-        // Dibuja imagen SIGUIENTE.png sobre el botón play si toca
+        // Mano EFECTOS (visual)
+        dibujarManoEfectos();
+
+        // Botón SIGUIENTE
         if (mostrarBotonSiguiente) {
             batch.draw(imgSiguiente, BOTON_PLAY_X, BOTON_PLAY_Y, BOTON_PLAY_ANCHO, BOTON_PLAY_ALTO);
         }
 
-        // --- Dibuja número de turno centrado en el área con fuente nítida (color NEGRO) ---
+        // Turno
         String textoTurno = String.valueOf(turnoActual);
         layoutTurno.setText(fuenteTurno, textoTurno);
         float textX = TURNO_X + (TURNO_ANCHO - layoutTurno.width) / 2f;
         float textY = TURNO_Y + (TURNO_ALTO + layoutTurno.height) / 2f;
-
-        // nos aseguramos color NEGRO para el turno
         fuenteTurno.setColor(Color.BLACK);
         fuenteTurno.draw(batch, layoutTurno, textX, textY);
 
-        // --- Dibuja niveles disponibles ---
+        // Niveles disponibles
         dibujarNivelesDisponibles();
 
-        // ---- Imágenes de VIDA (jugador y enemigo) por umbrales ----
+        // Imágenes de vida por umbral
         if (vida2Img != null && vida3Img != null && vida4Img != null) {
-            Gdx.gl.glEnable(GL20.GL_BLEND); // por si las imágenes tienen transparencia
+            Gdx.gl.glEnable(GL20.GL_BLEND);
 
-            // Jugador
             if (vidaUsuario <= 50 && vidaUsuario > 20) {
                 batch.draw(vida2Img, VIDA_IMG_X, VIDA_IMG_Y, VIDA_IMG_W, VIDA_IMG_H);
             } else if (vidaUsuario <= 20 && vidaUsuario > 0) {
@@ -465,7 +487,6 @@ public class PantallaBatalla implements Screen {
                 batch.draw(vida4Img, VIDA_IMG_X, VIDA_IMG_Y, VIDA_IMG_W, VIDA_IMG_H);
             }
 
-            // Enemigo
             if (vidaEnemigo <= 50 && vidaEnemigo > 20) {
                 batch.draw(vida2Img, VIDA_ENE_IMG_X, VIDA_ENE_IMG_Y, VIDA_ENE_IMG_W, VIDA_ENE_IMG_H);
             } else if (vidaEnemigo <= 20 && vidaEnemigo > 0) {
@@ -481,7 +502,7 @@ public class PantallaBatalla implements Screen {
 
         dibujarBarraVida();
 
-        // Resalta ranura bajo el cursor al arrastrar carta
+        // Resaltado de ranura al arrastrar
         if (ranuraHover != null) {
             Gdx.gl.glEnable(GL20.GL_BLEND);
             shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
@@ -491,7 +512,7 @@ public class PantallaBatalla implements Screen {
             Gdx.gl.glDisable(GL20.GL_BLEND);
         }
 
-        // Animación de iluminación y ataques
+        // Animación por ranuras
         if (batallaEnCurso) {
             tiempoHighlight += delta;
             if (tiempoHighlight >= DURACION_HIGHLIGHT) {
@@ -503,56 +524,79 @@ public class PantallaBatalla implements Screen {
                     batallaEnCurso = false;
                     mostrarBotonSiguiente = false;
                     ranuraActual = -1;
-                    pasarSiguienteTurno();
+
+                    if (turnoActual < MAX_TURNO) {
+                        pasarSiguienteTurno();
+                    } else {
+                        // Turno 22 finalizado: decidir por vida
+                        evaluarFinalPorVidaTrasUltimoTurno();
+                    }
                 }
             }
 
-            // Dibujo del highlight amarillo translúcido para la ranura actual
             Gdx.gl.glEnable(GL20.GL_BLEND);
             shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
-            shapeRenderer.setColor(new Color(1f, 1f, 0f, 0.3f)); // Amarillo translúcido
-
+            shapeRenderer.setColor(new Color(1f, 1f, 0f, 0.3f));
             switch (ranuraActual) {
-                case 0:
-                    shapeRenderer.rect(0, 230, 338, 630);
-                    break;
-                case 1:
-                    shapeRenderer.rect(370, 230, 385, 630);
-                    break;
-                case 2:
-                    shapeRenderer.rect(777, 230, 379, 630);
-                    break;
-                case 3:
-                    shapeRenderer.rect(1175, 230, 376, 630);
-                    break;
-                case 4:
-                    shapeRenderer.rect(1562, 230, 357, 630);
-                    break;
+                case 0: shapeRenderer.rect(0, 230, 338, 630); break;
+                case 1: shapeRenderer.rect(370, 230, 385, 630); break;
+                case 2: shapeRenderer.rect(777, 230, 379, 630); break;
+                case 3: shapeRenderer.rect(1175, 230, 376, 630); break;
+                case 4: shapeRenderer.rect(1562, 230, 357, 630); break;
             }
             shapeRenderer.end();
             Gdx.gl.glDisable(GL20.GL_BLEND);
         }
     }
 
-    private void pasarSiguienteTurno() {
-        if (turnoActual < 22) {
-            turnoActual++;
-            System.out.println("[TURNO] Avanzando al turno " + turnoActual);
-        } else {
-            System.out.println("[TURNO] Se alcanzó el turno máximo: " + turnoActual);
-            // Aquí podrías agregar lógica para terminar batalla o mostrar mensaje
+    // Dibuja la mano de efectos a la derecha (sin interacción por ahora)
+    private void dibujarManoEfectos() {
+        for (int i = 0; i < manoEfectos.size(); i++) {
+            // Primera carta queda con su borde derecho en X=1920
+            float x = (EFECTOS_BORDE_DER - ANCHO_CARTA) - (ANCHO_CARTA + ESPACIO_CARTAS) * i;
+            float y = Y_CARTA_MANO_DERECHA;
+            batch.draw(manoEfectos.get(i).getImagen(), x, y, ANCHO_CARTA, ALTURA_CARTA);
         }
-        // Verificamos condición al cambiar de turno también (por si hubo daño directo que mató)
-        verificarCondicionYTransicion();
-        // Aquí podrías agregar lógica para invocar cartas o resetear estados para el nuevo turno
     }
 
-    /**
-     * Comprueba si la carta puede invocarse según el nivel permitido en el turnoActual.
-     */
+    private void pasarSiguienteTurno() {
+        if (turnoActual < MAX_TURNO) {
+            turnoActual++;
+            System.out.println("[TURNO] Avanzando al turno " + turnoActual);
+
+            // Robos SOLO una vez por turno y NUNCA después del último turno
+            otorgarCartasPorTurno();
+
+            // Revisión de estados después del robo
+            verificarCondicionYTransicion();
+        } else {
+            // Ya en el turno final: no avanzar, no robar
+            System.out.println("[TURNO] Ya estamos en el turno final (" + turnoActual + "), no se avanza ni se roban cartas.");
+            verificarCondicionYTransicion();
+        }
+    }
+
+    // Reglas de robo con límite de mano:
+    // - Siempre 1 Tropa si hay espacio.
+    // - Si el turno es múltiplo de 3: además 1 Efecto si hay espacio.
+    private void otorgarCartasPorTurno() {
+        if (!mazoTropasRestantes.isEmpty() && manoTropas.size() < MAX_CARTAS_MANO) {
+            manoTropas.add(mazoTropasRestantes.remove(0));
+        }
+        if (turnoActual % 3 == 0 && !mazoEfectosRestantes.isEmpty() && manoEfectos.size() < MAX_CARTAS_MANO) {
+            manoEfectos.add(mazoEfectosRestantes.remove(0));
+        }
+
+        System.out.println("[ROBO] Turno " + turnoActual + " -> Tropa? " +
+            manoTropas.size() + "/" + MAX_CARTAS_MANO + " | Efectos " +
+            manoEfectos.size() + "/" + MAX_CARTAS_MANO +
+            " | Tropas restantes: " + mazoTropasRestantes.size() +
+            " | Efectos restantes: " + mazoEfectosRestantes.size());
+    }
+
     private boolean puedeInvocarPorNivel(CartaTropa carta) {
         if (turnoActual < 1 || turnoActual > nivelesPorTurno.size()) {
-            return false; // Fuera de rango de turnos definidos
+            return false;
         }
         List<Integer> nivelesPermitidos = nivelesPorTurno.get(turnoActual - 1);
         return nivelesPermitidos.contains(carta.getNivel());
@@ -565,17 +609,14 @@ public class PantallaBatalla implements Screen {
         int vidaEnemiga = contexto.getVidaEnemiga();
 
         if (vidaEnemiga <= 0 && vidaPropia > 0) {
-            // VICTORIA
             partidaTerminada = true;
             System.out.println("[PARTIDA] VICTORIA detectada - cambio a PantallaVictoria");
-            // reproducir musica de victoria y cambiar pantalla
             juego.reproducirMusicaVictoria();
             juego.setScreen(new PantallaVictoria(juego));
             return;
         }
 
         if (vidaPropia <= 0 && vidaEnemiga > 0) {
-            // DERROTA
             partidaTerminada = true;
             System.out.println("[PARTIDA] DERROTA detectada - cambio a PantallaDerrota");
             juego.reproducirMusicaDerrota();
@@ -584,7 +625,6 @@ public class PantallaBatalla implements Screen {
         }
 
         if (vidaEnemiga <= 0 && vidaPropia <= 0) {
-            // Empate simultáneo: regla actual -> DERROTA (puedes cambiar esto)
             partidaTerminada = true;
             System.out.println("[PARTIDA] Ambos a 0 simultáneamente: aplicando regla -> DERROTA");
             juego.reproducirMusicaDerrota();
@@ -674,6 +714,11 @@ public class PantallaBatalla implements Screen {
         if (vida3Img != null) vida3Img.dispose();
         if (vida4Img != null) vida4Img.dispose();
 
+        // Liberar cartas (si estas instancias son propiedad de esta pantalla)
+        for (CartaTropa c : manoTropas) if (c != null) c.dispose();
+        for (CartaTropa c : mazoTropasRestantes) if (c != null) c.dispose();
+        for (CartaEfecto e : manoEfectos) if (e != null) e.dispose();
+        for (CartaEfecto e : mazoEfectosRestantes) if (e != null) e.dispose();
     }
 
     public ContextoBatalla getContexto() {
@@ -682,5 +727,38 @@ public class PantallaBatalla implements Screen {
 
     public List<CartaEfecto> getEfectosDisponibles() {
         return efectosDisponibles;
+    }
+
+    private void evaluarFinalPorVidaTrasUltimoTurno() {
+        if (partidaTerminada) return;
+
+        int vidaPropia = contexto.getVidaPropia();
+        int vidaEnemiga = contexto.getVidaEnemiga();
+
+        // Si ya se definió por 0 de vida, usa la lógica normal
+        if (vidaPropia <= 0 || vidaEnemiga <= 0) {
+            verificarCondicionYTransicion();
+            return;
+        }
+
+        if (vidaPropia > vidaEnemiga) {
+            // VICTORIA por vida
+            partidaTerminada = true;
+            System.out.println("[PARTIDA] Fin de turno 22: gana el JUGADOR por tener más vida (" + vidaPropia + " > " + vidaEnemiga + ")");
+            juego.reproducirMusicaVictoria();
+            juego.setScreen(new PantallaVictoria(juego));
+        } else if (vidaPropia < vidaEnemiga) {
+            // DERROTA por vida
+            partidaTerminada = true;
+            System.out.println("[PARTIDA] Fin de turno 22: gana el ENEMIGO por tener más vida (" + vidaEnemiga + " > " + vidaPropia + ")");
+            juego.reproducirMusicaDerrota();
+            juego.setScreen(new PantallaDerrota(juego));
+        } else {
+            // Empate exacto -> Pantalla de empate
+            partidaTerminada = true;
+            System.out.println("[PARTIDA] Fin de turno 22: empate perfecto de vida -> PANTALLA EMPATE");
+            juego.reproducirMusicaEmpate();
+            juego.setScreen(new PantallaEmpate(juego));
+        }
     }
 }

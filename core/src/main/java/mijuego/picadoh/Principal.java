@@ -29,6 +29,7 @@ public class Principal extends Game {
     private Music musicaBatalla2;
     private Music musicaVictoria; // Nueva
     private Music musicaDerrota;  // Nueva
+    private Music musicaEmpate;   // NUEVA: música de empate
     private Music musicaActual;
 
     //  Volumen global
@@ -44,7 +45,7 @@ public class Principal extends Game {
         cargarMusica();
         cargarMusicaSeleccion();
         cargarMusicaBatalla();
-        cargarMusicaCondicion(); // Carga música de victoria/derrota
+        cargarMusicaCondicion(); // Carga música de victoria/derrota/empate
         reproducirMusica(); // Menú por defecto
         setScreen(new PantallaMenu(this));
     }
@@ -144,6 +145,11 @@ public class Principal extends Game {
         musicaDerrota = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/condicion/DERROTA.mp3"));
         musicaDerrota.setLooping(true);
         musicaDerrota.setVolume(volumenMusica);
+
+        // NUEVO: música de EMPATE
+        musicaEmpate = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/condicion/EMPATE.mp3"));
+        musicaEmpate.setLooping(true);
+        musicaEmpate.setVolume(volumenMusica);
     }
 
 
@@ -162,6 +168,16 @@ public class Principal extends Game {
             musicaDerrota.setVolume(volumenMusica);
             musicaDerrota.play();
             musicaActual = musicaDerrota;
+        }
+    }
+
+    // NUEVO: reproducir música de EMPATE
+    public void reproducirMusicaEmpate() {
+        detenerMusicaActual();
+        if (musicaEmpate != null) {
+            musicaEmpate.setVolume(volumenMusica);
+            musicaEmpate.play();
+            musicaActual = musicaEmpate;
         }
     }
 
@@ -186,6 +202,7 @@ public class Principal extends Game {
         if (musicaBatalla2 != null) musicaBatalla2.setVolume(volumenMusica);
         if (musicaVictoria != null) musicaVictoria.setVolume(volumenMusica);
         if (musicaDerrota != null) musicaDerrota.setVolume(volumenMusica);
+        if (musicaEmpate != null) musicaEmpate.setVolume(volumenMusica); // NUEVO
     }
 
     // ───────────────────────────────
@@ -276,6 +293,7 @@ public class Principal extends Game {
         if (musicaBatalla2 != null) musicaBatalla2.dispose();
         if (musicaVictoria != null) musicaVictoria.dispose();
         if (musicaDerrota != null) musicaDerrota.dispose();
+        if (musicaEmpate != null) musicaEmpate.dispose(); // NUEVO
         super.dispose();
     }
 

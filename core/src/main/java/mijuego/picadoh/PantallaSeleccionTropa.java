@@ -81,8 +81,10 @@ public class PantallaSeleccionTropa implements Screen {
                 System.out.println(" - " + carta.getNombre());
             }
 
-            // Pasar cartas seleccionadas a la siguiente pantalla
+
             juego.setScreen(new PantallaSeleccionEfecto(juego, cartasElegidas));
+            dispose(); // libera el fondo y las cartas que hayan quedado visibles
+
         } else {
             generarNuevoParDeCartas();
         }
