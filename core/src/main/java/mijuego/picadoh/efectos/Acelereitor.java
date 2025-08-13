@@ -11,9 +11,9 @@ public class Acelereitor extends CartaEfecto {
 
     @Override
     public void aplicarEfecto(ContextoBatalla contexto) {
-        CartaTropa tropa = contexto.getTropaSeleccionada();
-        if (tropa != null) {
-            tropa.setPuedeAtacarDosVeces(true);
+        CartaTropa t = contexto.getTropaSeleccionada();
+        if (t != null) {
+            t.setAtk(t.getAtk() * 2); // atacar dos veces => duplica ATK
         }
     }
 }
