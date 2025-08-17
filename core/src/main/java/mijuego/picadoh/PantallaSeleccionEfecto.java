@@ -17,6 +17,17 @@ public class PantallaSeleccionEfecto implements Screen {
     private final Principal juego;
     private Texture fondo;
 
+
+    private static final int L_X = 340;
+    private static final int L_Y = 75;
+    private static final int L_W = 924 - 336; // 588
+    private static final int L_H = 795 - 75;  // 718
+
+    private static final int R_X = 1028;
+    private static final int R_Y = 75;
+    private static final int R_W = 1609 - 1024; // 585
+    private static final int R_H = 795 - 75;    // 718
+
     private final List<Class<? extends CartaEfecto>> clasesEfecto = Arrays.asList(
         ExplosionForzal.class,
         SenoraArmadura.class,
@@ -31,9 +42,8 @@ public class PantallaSeleccionEfecto implements Screen {
     private CartaEfecto carta1, carta2;
     private boolean pantallaFinalizada = false;
 
-    // NUEVO: variables para transición tipo PantallaSeleccionTropa
     private boolean esperandoTransicion = false;
-    private float tiempoDesdeClick = 0;
+    private float tiempoDesdeClick = 0f;
     private CartaEfecto cartaSeleccionada = null;
 
     public PantallaSeleccionEfecto(Principal juego, List<CartaTropa> cartasTropaSeleccionadas) {
@@ -51,23 +61,20 @@ public class PantallaSeleccionEfecto implements Screen {
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
                 if (esperandoTransicion || pantallaFinalizada) return true;
 
-                int yInvertida = Gdx.graphics.getHeight() - screenY;
+                int yInv = Gdx.graphics.getHeight() - screenY;
 
-                if (screenX >= 338 && screenX <= 918 && yInvertida >= 70 && yInvertida <= 787) {
+                if (screenX >= L_X && screenX <= L_X + L_W && yInv >= L_Y && yInv <= L_Y + L_H) {
                     cartaSeleccionada = carta1;
-                    System.out.println("Elegiste efecto: " + carta1.getNombre());
-                } else if (screenX >= 1029 && screenX <= 1601 && yInvertida >= 70 && yInvertida <= 787) {
+                } else if (screenX >= R_X && screenX <= R_X + R_W && yInv >= R_Y && yInv <= R_Y + R_H) {
                     cartaSeleccionada = carta2;
-                    System.out.println("Elegiste efecto: " + carta2.getNombre());
                 } else {
                     cartaSeleccionada = null;
                 }
 
                 if (cartaSeleccionada != null) {
                     esperandoTransicion = true;
-                    tiempoDesdeClick = 0;
+                    tiempoDesdeClick = 0f;
                 }
-
                 return true;
             }
         });
@@ -90,11 +97,9 @@ public class PantallaSeleccionEfecto implements Screen {
     }
 
     private void avanzarSeleccion() {
-        if (cartaSeleccionada != null) {
-            cartasEfectoElegidas.add(cartaSeleccionada);
-        }
+        if (cartaSeleccionada != null) cartasEfectoElegidas.add(cartaSeleccionada);
 
-        // Liberar solo la carta no elegida
+        // liberar la no elegida
         if (cartaSeleccionada == carta1 && carta2 != null) carta2.dispose();
         if (cartaSeleccionada == carta2 && carta1 != null) carta1.dispose();
 
@@ -106,12 +111,9 @@ public class PantallaSeleccionEfecto implements Screen {
             if (pantallaFinalizada) return;
             pantallaFinalizada = true;
 
-            System.out.println(">>> Selección de efectos completa!");
-            for (CartaEfecto carta : cartasEfectoElegidas) {
-                System.out.println(" - " + carta.getNombre());
-            }
+            ContextoBatalla contexto =
+                new ContextoBatalla(cartasTropaSeleccionadas, new ArrayList<>(), 80, 80);
 
-            ContextoBatalla contexto = new ContextoBatalla(cartasTropaSeleccionadas, new ArrayList<>(), 80, 80);
             juego.setScreen(new PantallaBatalla(juego, contexto, cartasEfectoElegidas));
             dispose();
         } else {
@@ -126,8 +128,8 @@ public class PantallaSeleccionEfecto implements Screen {
         juego.batch.draw(fondo, 0, 0, 1920, 1080);
 
         if (!esperandoTransicion && carta1 != null && carta2 != null) {
-            juego.batch.draw(carta1.getImagen(), 338, 70, 580, 717);
-            juego.batch.draw(carta2.getImagen(), 1029, 70, 572, 717);
+            juego.batch.draw(carta1.getImagen(), L_X, L_Y, L_W, L_H);
+            juego.batch.draw(carta2.getImagen(), R_X, R_Y, R_W, R_H);
         }
 
         juego.batch.end();
@@ -149,7 +151,6 @@ public class PantallaSeleccionEfecto implements Screen {
     @Override
     public void dispose() {
         if (fondo != null) fondo.dispose();
-        // NO liberar cartasEfectoElegidas aquí: las usa PantallaBatalla
         if (carta1 != null) carta1.dispose();
         if (carta2 != null) carta2.dispose();
     }

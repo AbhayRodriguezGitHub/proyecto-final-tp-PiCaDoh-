@@ -1,0 +1,57 @@
+package mijuego.picadoh.cartas;
+
+import java.util.*;
+import java.lang.reflect.Constructor;
+
+public final class RegistroCartas {
+    private RegistroCartas() {}
+    private static final List<Class<? extends CartaTropa>> TROPAS = List.of(
+
+        Guardiancito.class,
+        Barbot.class,
+        MafiosaRosa.class,
+        Nappo.class,
+        Juvergot.class,
+        Konjisma.class
+
+    );
+
+    public static List<Class<? extends CartaTropa>> tropasDisponibles() {
+        return TROPAS;
+    }
+
+    public static CartaTropa crear(Class<? extends CartaTropa> clazz) {
+        try {
+            Constructor<? extends CartaTropa> ctor = clazz.getDeclaredConstructor();
+            ctor.setAccessible(true);
+            return ctor.newInstance();
+        } catch (Exception e) {
+            throw new RuntimeException("No se pudo instanciar " + clazz.getSimpleName(), e);
+        }
+    }
+
+    public static Optional<CartaTropa> crearPorNombre(String nombre) {
+        for (Class<? extends CartaTropa> c : TROPAS) {
+            // match por nombre de clase o por getNombre() una vez instanciada
+            if (c.getSimpleName().equalsIgnoreCase(nombre)) {
+                return Optional.of(crear(c));
+            }
+            try {
+                CartaTropa tmp = crear(c);
+                if (tmp.getNombre().equalsIgnoreCase(nombre)) {
+                    return Optional.of(tmp);
+                }
+            } catch (RuntimeException ignored) {}
+        }
+        return Optional.empty();
+    }
+
+    public static List<CartaTropa> aleatorias(int n, Random rnd) {
+        List<Class<? extends CartaTropa>> copia = new ArrayList<>(TROPAS);
+        Collections.shuffle(copia, rnd);
+        int k = Math.min(n, copia.size());
+        List<CartaTropa> out = new ArrayList<>(k);
+        for (int i = 0; i < k; i++) out.add(crear(copia.get(i)));
+        return out;
+    }
+}

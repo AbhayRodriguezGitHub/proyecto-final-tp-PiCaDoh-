@@ -13,14 +13,26 @@ public class PantallaSeleccionTropa implements Screen {
     private final Principal juego;
     private Texture fondo;
 
-    private final List<Class<? extends CartaTropa>> clasesDisponibles = Arrays.asList(
-        Guardiancito.class, Barbot.class, MafiosaRosa.class
-    );
+
+    private static final int L_X = 336;
+    private static final int L_Y = 75;
+    private static final int L_W = 568;
+    private static final int L_H = 752 - 75;
+
+
+
+    private static final int R_X = 1023;
+    private static final int R_Y = 75;
+    private static final int R_W = 1589 - 1021;
+    private static final int R_H = 752 - 75;
+
+
+    private final List<Class<? extends CartaTropa>> clasesDisponibles = RegistroCartas.tropasDisponibles();
 
     private final List<CartaTropa> cartasElegidas = new ArrayList<>();
     private CartaTropa carta1, carta2;
     private boolean esperandoTransicion = false;
-    private float tiempoDesdeClick = 0;
+    private float tiempoDesdeClick = 0f;
     private CartaTropa cartaSeleccionada = null;
 
     public PantallaSeleccionTropa(Principal juego) {
@@ -30,7 +42,7 @@ public class PantallaSeleccionTropa implements Screen {
     @Override
     public void show() {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/ELECCIONTROPA.png"));
-        juego.reproducirMusicaSeleccion(); // Música de selección
+        juego.reproducirMusicaSeleccion();
 
         generarNuevoParDeCartas();
 
@@ -41,33 +53,29 @@ public class PantallaSeleccionTropa implements Screen {
 
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
 
-                if (screenX >= 335 && screenX <= 893 && yInvertida >= 77 && yInvertida <= 736) {
+                // Hitbox izquierda
+                if (screenX >= L_X && screenX <= L_X + L_W && yInvertida >= L_Y && yInvertida <= L_Y + L_H) {
                     cartaSeleccionada = carta1;
-                    System.out.println("Hiciste clic en la izquierda: " + carta1.getNombre());
-                } else if (screenX >= 1026 && screenX <= 1580 && yInvertida >= 77 && yInvertida <= 736) {
+                }
+                // Hitbox derecha
+                else if (screenX >= R_X && screenX <= R_X + R_W && yInvertida >= R_Y && yInvertida <= R_Y + R_H) {
                     cartaSeleccionada = carta2;
-                    System.out.println("Hiciste clic en la derecha: " + carta2.getNombre());
                 } else {
                     cartaSeleccionada = null;
                 }
 
                 if (cartaSeleccionada != null) {
-                    System.out.println("Elegiste: " + cartaSeleccionada.getNombre());
                     esperandoTransicion = true;
-                    tiempoDesdeClick = 0;
+                    tiempoDesdeClick = 0f;
                 }
-
                 return true;
             }
         });
     }
 
     private void avanzarSeleccion() {
-        if (cartaSeleccionada != null) {
-            cartasElegidas.add(cartaSeleccionada); // No hacer dispose() de esta carta
-        }
+        if (cartaSeleccionada != null) cartasElegidas.add(cartaSeleccionada);
 
-        // Solo dispose() de la carta que NO fue elegida
         if (cartaSeleccionada == carta1 && carta2 != null) carta2.dispose();
         if (cartaSeleccionada == carta2 && carta1 != null) carta1.dispose();
 
@@ -76,15 +84,8 @@ public class PantallaSeleccionTropa implements Screen {
         cartaSeleccionada = null;
 
         if (cartasElegidas.size() >= 15) {
-            System.out.println(">>> Selección completa! Cartas elegidas:");
-            for (CartaTropa carta : cartasElegidas) {
-                System.out.println(" - " + carta.getNombre());
-            }
-
-
             juego.setScreen(new PantallaSeleccionEfecto(juego, cartasElegidas));
-            dispose(); // libera el fondo y las cartas que hayan quedado visibles
-
+            dispose();
         } else {
             generarNuevoParDeCartas();
         }
@@ -94,16 +95,11 @@ public class PantallaSeleccionTropa implements Screen {
         try {
             List<Class<? extends CartaTropa>> copia = new ArrayList<>(clasesDisponibles);
             Collections.shuffle(copia);
-
             Class<? extends CartaTropa> clase1 = copia.get(0);
             Class<? extends CartaTropa> clase2 = copia.get(1);
 
-            carta1 = clase1.getDeclaredConstructor().newInstance();
-            carta2 = clase2.getDeclaredConstructor().newInstance();
-
-            System.out.println("Nuevo par generado:");
-            System.out.println(" - Izquierda: " + carta1.getNombre());
-            System.out.println(" - Derecha:   " + carta2.getNombre());
+            carta1 = RegistroCartas.crear(clase1);
+            carta2 = RegistroCartas.crear(clase2);
         } catch (Exception e) {
             e.printStackTrace();
             carta1 = null;
@@ -118,12 +114,8 @@ public class PantallaSeleccionTropa implements Screen {
         juego.batch.draw(fondo, 0, 0, 1920, 1080);
 
         if (!esperandoTransicion) {
-            if (carta1 != null) {
-                juego.batch.draw(carta1.getImagen(), 335, 77, 558, 659);
-            }
-            if (carta2 != null) {
-                juego.batch.draw(carta2.getImagen(), 1026, 77, 554, 659);
-            }
+            if (carta1 != null) juego.batch.draw(carta1.getImagen(), L_X, L_Y, L_W, L_H);
+            if (carta2 != null) juego.batch.draw(carta2.getImagen(), R_X, R_Y, R_W, R_H);
         }
 
         juego.batch.end();
@@ -144,11 +136,8 @@ public class PantallaSeleccionTropa implements Screen {
 
     @Override
     public void dispose() {
-        fondo.dispose();
-
-        // Solo dispose() de las cartas que quedaron visibles
+        if (fondo != null) fondo.dispose();
         if (carta1 != null) carta1.dispose();
         if (carta2 != null) carta2.dispose();
-
     }
 }
