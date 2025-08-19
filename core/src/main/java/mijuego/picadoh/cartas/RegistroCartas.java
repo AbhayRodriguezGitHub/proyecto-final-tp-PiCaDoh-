@@ -12,7 +12,8 @@ public final class RegistroCartas {
         MafiosaRosa.class,
         Nappo.class,
         Juvergot.class,
-        Konjisma.class
+        Konjisma.class,
+        Alkaline.class
 
     );
 
@@ -32,7 +33,6 @@ public final class RegistroCartas {
 
     public static Optional<CartaTropa> crearPorNombre(String nombre) {
         for (Class<? extends CartaTropa> c : TROPAS) {
-            // match por nombre de clase o por getNombre() una vez instanciada
             if (c.getSimpleName().equalsIgnoreCase(nombre)) {
                 return Optional.of(crear(c));
             }
