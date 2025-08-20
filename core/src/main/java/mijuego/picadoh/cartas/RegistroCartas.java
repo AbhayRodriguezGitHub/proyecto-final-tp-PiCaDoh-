@@ -13,7 +13,12 @@ public final class RegistroCartas {
         Nappo.class,
         Juvergot.class,
         Konjisma.class,
-        Alkaline.class
+        Alkaline.class,
+        Saga.class,
+        CabezaGol.class,
+        PlantaGuerra.class,
+        Bandy.class,
+        Barbarroz.class
 
     );
 
