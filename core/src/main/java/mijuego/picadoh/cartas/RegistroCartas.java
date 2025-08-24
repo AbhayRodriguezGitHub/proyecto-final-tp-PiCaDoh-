@@ -18,7 +18,13 @@ public final class RegistroCartas {
         CabezaGol.class,
         PlantaGuerra.class,
         Bandy.class,
-        Barbarroz.class
+        Barbarroz.class,
+        Barbillon.class,
+        Viernes12.class,
+        Zamba.class,
+        Larro.class,
+        Chavo7.class
+
 
     );
 
