@@ -23,7 +23,14 @@ public final class RegistroCartas {
         Viernes12.class,
         Zamba.class,
         Larro.class,
-        Chavo7.class
+        Chavo7.class,
+        Hornero.class,
+        Mifalda.class,
+        Indiana.class,
+        Nario.class,
+        Nosic.class,
+        Toroto.class,
+        Tazitota.class
 
 
     );
