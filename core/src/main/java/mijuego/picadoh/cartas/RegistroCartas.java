@@ -30,7 +30,25 @@ public final class RegistroCartas {
         Nario.class,
         Nosic.class,
         Toroto.class,
-        Tazitota.class
+        Tazitota.class,
+        Alfreddo.class,
+        Badabun.class,
+        Ballestero.class,
+        Bigote.class,
+        Bochini.class,
+        Bombastic.class,
+        Bullynero.class,
+        Dnk.class,
+        Edge.class,
+        Libertad.class,
+        Phonix.class,
+        Rinyu.class,
+        Slim.class,
+        Tiro.class,
+        TrollBox.class,
+        Vecino.class,
+        Verdoso.class
+
 
 
     );
