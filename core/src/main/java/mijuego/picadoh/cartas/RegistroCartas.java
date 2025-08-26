@@ -62,7 +62,20 @@ public final class RegistroCartas {
         Creed.class,
         Bromas.class,
         Brocoli.class,
-        Blander.class
+        Blander.class,
+        Agente.class,
+        Chapa.class,
+        Danta.class,
+        Escorpion.class,
+        Injerst.class,
+        Keneddy.class,
+        King.class,
+        Samubat.class,
+        Span.class,
+        Tinton.class,
+        UltraCaballero.class,
+        Yaga.class,
+        ZomGod.class
 
 
 
