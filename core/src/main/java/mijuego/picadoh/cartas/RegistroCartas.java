@@ -47,7 +47,22 @@ public final class RegistroCartas {
         Tiro.class,
         TrollBox.class,
         Vecino.class,
-        Verdoso.class
+        Verdoso.class,
+        Montana.class,
+        Pesos.class,
+        Jc.class,
+        Martson.class,
+        Gingara.class,
+        SinSonrisa.class,
+        Venganza.class,
+        Xman.class,
+        Gaiden.class,
+        Fierro.class,
+        Destruidor.class,
+        Creed.class,
+        Bromas.class,
+        Brocoli.class,
+        Blander.class
 
 
 
