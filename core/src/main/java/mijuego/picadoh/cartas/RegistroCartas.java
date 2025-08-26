@@ -75,7 +75,19 @@ public final class RegistroCartas {
         Tinton.class,
         UltraCaballero.class,
         Yaga.class,
-        ZomGod.class
+        ZomGod.class,
+        Avatar.class,
+        Chyper.class,
+        Marado.class,
+        Ouroun.class,
+        Qutulu.class,
+        Sobrino.class,
+        Tennyson.class,
+        Trans.class,
+        Vergal.class,
+        Ñensei.class,
+        Jansinski.class
+
 
 
 
