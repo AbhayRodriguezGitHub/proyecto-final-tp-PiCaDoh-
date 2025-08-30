@@ -29,16 +29,19 @@ public class PantallaSeleccionEfecto implements Screen {
     private static final int R_X = 1609 - R_W; // 1021
     private static final int R_Y = 75;
 
-    // Lista actual de efectos (puedes migrar a RegistroEfectos cuando quieras)
     private final List<Class<? extends CartaEfecto>> clasesEfecto = Arrays.asList(
-        ExplosionForzal.class,
-        SenoraArmadura.class,
-        MagiaBendita.class,
-        EscudoReal.class,
         Acelereitor.class,
+        EscudoReal.class,
+        ExplosionForzal.class,
+        MagiaBendita.class,
+        SenoraArmadura.class,
         Tyson.class,
         AnarquiaNivel.class,
-        Bombardrilo.class
+        Bombardrilo.class,
+        Monarquia.class,
+        Rebelion.class,
+        MalDeAmores.class,
+        MagoDel8.class
 
     );
 

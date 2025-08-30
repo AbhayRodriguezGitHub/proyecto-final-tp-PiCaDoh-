@@ -396,6 +396,19 @@ public class PantallaBatalla implements Screen {
                                 contexto.setTropaSeleccionada(null);
                                 efectoEnRanuraJugador.aplicarEfecto(contexto);
 
+                                if (contexto.isPurgaPorNivelSolicitada()) {
+                                    for (int i = 0; i < ranuras.size(); i++) {
+                                        if (ranuras.get(i).getCarta() != null) {
+                                            int nivel = ranuras.get(i).getCarta().getNivel();
+                                            if (contexto.getNivelesAPurgar().contains(nivel)) {
+                                                ranuras.get(i).setCarta(null); // destruir
+                                            }
+                                        }
+                                    }
+                                    contexto.limpiarPurgaPorNivelSolicitud();
+                                    System.out.println("[EFECTO] Monarquía: se destruyeron todas las tropas de nivel 1–3.");
+                                }
+
                                 if (contexto.isLimpiarCampoSolicitado()) {
                                     for (int i = 0; i < ranuras.size(); i++) {
                                         ranuras.get(i).setCarta(null);

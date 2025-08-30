@@ -29,6 +29,28 @@ public class ContextoBatalla {
     }
     private boolean invocacionLibreEsteTurno = false;
 
+    private boolean purgaPorNivelSolicitada = false;
+    private final java.util.HashSet<Integer> nivelesAPurgar = new java.util.HashSet<>();
+
+    public void solicitarPurgaPorNivel(int... niveles) {
+        nivelesAPurgar.clear();
+        for (int n : niveles) nivelesAPurgar.add(n);
+        purgaPorNivelSolicitada = true;
+    }
+
+    public boolean isPurgaPorNivelSolicitada() {
+        return purgaPorNivelSolicitada;
+    }
+
+    public java.util.Set<Integer> getNivelesAPurgar() {
+        return nivelesAPurgar;
+    }
+
+    public void limpiarPurgaPorNivelSolicitud() {
+        purgaPorNivelSolicitada = false;
+        nivelesAPurgar.clear();
+    }
+
     public ContextoBatalla(List<CartaTropa> propias, List<CartaTropa> enemigas) {
         this(propias, enemigas, VIDA_MAXIMA, VIDA_MAXIMA);
     }

@@ -9,8 +9,13 @@ public class Tyson extends CartaEfecto {
     }
 
     @Override
+    public boolean esInstantaneo() {
+        return true;
+    }
+
+    @Override
     public void aplicarEfecto(ContextoBatalla contexto) {
         contexto.restarVidaEnemiga(5);
-        System.out.println("[EFECTO] Tyson inflige 5 de daño directo al enemigo.");
+        System.out.println("[EFECTO] Tyson inflige 5 de daño directo al enemigo (instantáneo).");
     }
 }
