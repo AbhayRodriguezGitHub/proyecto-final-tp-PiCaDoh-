@@ -20,7 +20,8 @@ public final class RegistroEfectos {
         MalDeAmores.class,
         MagoDel8.class,
         Paracetamol.class,
-        Intercambio.class
+        Intercambio.class,
+        Avaricioso.class
     );
 
     public static List<Class<? extends CartaEfecto>> efectosDisponibles() {

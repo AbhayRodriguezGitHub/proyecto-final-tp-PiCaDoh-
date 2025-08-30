@@ -353,10 +353,12 @@ public class PantallaBatalla implements Screen {
                     for (Ranura ranura : ranuras) {
                         if (ranura.contiene(screenX, mouseY) && ranura.getCarta() == null) {
 
-                            if (invocacionesTropaEsteTurno >= MAX_INVOC_TROPAS_TURNO) {
+                            if (!contexto.isInvocacionesIlimitadasEsteTurno()
+                                && invocacionesTropaEsteTurno >= MAX_INVOC_TROPAS_TURNO) {
                                 System.out.println("[INVOCACIÓN BLOQUEADA] Ya invocaste " + MAX_INVOC_TROPAS_TURNO + " tropas este turno.");
                                 break;
                             }
+
 
                             if (puedeInvocarPorNivel(cartaSeleccionada)) {
                                 ranura.setCarta(cartaSeleccionada);
@@ -683,6 +685,13 @@ public class PantallaBatalla implements Screen {
                     }
 
                     contexto.revertirEfectosTurno();
+
+                    if (!contexto.isInvocacionesIlimitadasEsteTurno()
+                        && invocacionesTropaEsteTurno >= MAX_INVOC_TROPAS_TURNO) {
+                        System.out.println("[INVOCACIÓN BLOQUEADA] Límite de invocaciones alcanzado.");
+
+                    }
+
 
                     if (efectoEnRanuraJugador != null) {
                         System.out.println("[EFECTO] Finaliza duración del efecto: " + efectoEnRanuraJugador.getNombre());

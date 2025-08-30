@@ -43,7 +43,8 @@ public class PantallaSeleccionEfecto implements Screen {
         MalDeAmores.class,
         MagoDel8.class,
         Paracetamol.class,
-        Intercambio.class
+        Intercambio.class,
+        Avaricioso.class
 
     );
 
