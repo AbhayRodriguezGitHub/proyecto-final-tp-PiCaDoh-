@@ -366,7 +366,7 @@ public class PantallaBatalla implements Screen {
                                 if (!cartaSeleccionada.invocar()) {
                                     manoTropas.remove(cartaSeleccionada);
                                 }
-                                invocacionesTropaEsteTurno++; // cuenta la invocación de tropa
+                                invocacionesTropaEsteTurno++;
                                 System.out.println("[INVOCACIÓN] Tropas invocadas este turno: " + invocacionesTropaEsteTurno + "/" + MAX_INVOC_TROPAS_TURNO);
                             } else {
                                 System.out.println("[INVOCACIÓN BLOQUEADA] No puedes invocar carta de nivel "
@@ -389,8 +389,30 @@ public class PantallaBatalla implements Screen {
                         efectoEnRanuraJugador = cartaEfectoSeleccionada;
                         System.out.println("[EFECTO] Colocado efecto en ranura: " + efectoEnRanuraJugador.getNombre());
                         invocado = true;
+
+                        if (efectoEnRanuraJugador.esInstantaneo()) {
+                            try {
+
+                                contexto.setTropaSeleccionada(null);
+                                efectoEnRanuraJugador.aplicarEfecto(contexto);
+
+                                if (contexto.isLimpiarCampoSolicitado()) {
+                                    for (int i = 0; i < ranuras.size(); i++) {
+                                        ranuras.get(i).setCarta(null);
+                                    }
+                                    contexto.setLimpiarCampoSolicitado(false);
+                                    System.out.println("[EFECTO] Bombardrilo: TODAS las cartas del campo fueron destruidas.");
+                                }
+
+                                efectoAplicadoEsteTurno = true;
+                                System.out.println("[EFECTO] " + efectoEnRanuraJugador.getNombre() + " aplicado instantáneamente.");
+                            } catch (Exception ex) {
+                                System.out.println("[EFECTO] Error en aplicación instantánea: " + ex.getMessage());
+                            }
+                        }
                     }
 
+                    // Si NO se invocó, vuelve a la mano en su posición original
                     if (!invocado) {
                         int idx = (indiceEfectoTomado >= 0 && indiceEfectoTomado <= manoEfectos.size())
                             ? indiceEfectoTomado : manoEfectos.size();
@@ -450,6 +472,7 @@ public class PantallaBatalla implements Screen {
     private void ejecutarBatalla() {
         System.out.println("[COMBATE] Iniciando animación de batalla...");
 
+        // Aplica el efecto al inicio del combate si aún no se aplicó este turno
         if (efectoEnRanuraJugador != null && !efectoAplicadoEsteTurno) {
             try {
                 snapshotsEfectoTurno.clear();
@@ -693,7 +716,8 @@ public class PantallaBatalla implements Screen {
     private void pasarSiguienteTurno() {
         if (turnoActual < MAX_TURNO) {
             turnoActual++;
-            invocacionesTropaEsteTurno = 0; // <-- reset del límite por turno
+            invocacionesTropaEsteTurno = 0; // reset del límite por turno
+            contexto.setInvocacionLibreEsteTurno(false); // reset de Anarquía u otros flags de turno
             System.out.println("[TURNO] Avanzando al turno " + turnoActual);
 
             otorgarCartasPorTurno();
@@ -720,6 +744,9 @@ public class PantallaBatalla implements Screen {
     }
 
     private boolean puedeInvocarPorNivel(CartaTropa carta) {
+        if (contexto.isInvocacionLibreEsteTurno()) {
+            return true;
+        }
         if (turnoActual < 1 || turnoActual > nivelesPorTurno.size()) {
             return false;
         }

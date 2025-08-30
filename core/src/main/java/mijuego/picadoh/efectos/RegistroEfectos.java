@@ -12,7 +12,9 @@ public final class RegistroEfectos {
         ExplosionForzal.class,
         MagiaBendita.class,
         SenoraArmadura.class,
-        Tyson.class
+        Tyson.class,
+        AnarquiaNivel.class,
+        Bombardrilo.class
     );
 
     public static List<Class<? extends CartaEfecto>> efectosDisponibles() {

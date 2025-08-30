@@ -36,7 +36,9 @@ public class PantallaSeleccionEfecto implements Screen {
         MagiaBendita.class,
         EscudoReal.class,
         Acelereitor.class,
-        Tyson.class
+        Tyson.class,
+        AnarquiaNivel.class,
+        Bombardrilo.class
 
     );
 

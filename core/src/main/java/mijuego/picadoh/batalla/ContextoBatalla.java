@@ -15,15 +15,25 @@ public class ContextoBatalla {
     private int vidaPropia;
     private int vidaEnemiga;
 
-    // ✅ carta seleccionada para aplicar efectos
+
     private CartaTropa tropaSeleccionada;
 
-    // Constructor original (usa vida máxima por defecto)
+    private boolean limpiarCampoSolicitado = false;
+
+    public boolean isLimpiarCampoSolicitado() {
+        return limpiarCampoSolicitado;
+    }
+
+    public void setLimpiarCampoSolicitado(boolean limpiarCampoSolicitado) {
+        this.limpiarCampoSolicitado = limpiarCampoSolicitado;
+    }
+    private boolean invocacionLibreEsteTurno = false;
+
     public ContextoBatalla(List<CartaTropa> propias, List<CartaTropa> enemigas) {
         this(propias, enemigas, VIDA_MAXIMA, VIDA_MAXIMA);
     }
 
-    // ✅ Constructor nuevo con vidas personalizadas
+
     public ContextoBatalla(List<CartaTropa> propias, List<CartaTropa> enemigas, int vidaP, int vidaE) {
         this.tropasPropias = new ArrayList<>(propias);
         this.tropasEnemigas = new ArrayList<>(enemigas);
@@ -52,7 +62,7 @@ public class ContextoBatalla {
         return VIDA_MAXIMA;
     }
 
-    // Vida
+
     public void restarVidaEnemiga(int cantidad) {
         vidaEnemiga -= cantidad;
         if (vidaEnemiga < 0) vidaEnemiga = 0;
@@ -63,7 +73,6 @@ public class ContextoBatalla {
         if (vidaPropia < 0) vidaPropia = 0;
     }
 
-    // Agregar setters para vida (para atajos debug)
     public void setVidaPropia(int vida) {
         this.vidaPropia = Math.min(vida, VIDA_MAXIMA);
         if (this.vidaPropia < 0) this.vidaPropia = 0;
@@ -99,7 +108,7 @@ public class ContextoBatalla {
         return tropasEnemigas.size() >= MAX_TROPAS_EN_CAMPO;
     }
 
-    // Selección de tropa
+
     public void setTropaSeleccionada(CartaTropa tropa) {
         this.tropaSeleccionada = tropa;
     }
@@ -108,7 +117,14 @@ public class ContextoBatalla {
         return tropaSeleccionada;
     }
 
-    // Debug/logs
+    public boolean isInvocacionLibreEsteTurno() {
+        return invocacionLibreEsteTurno;
+    }
+
+    public void setInvocacionLibreEsteTurno(boolean invocacionLibreEsteTurno) {
+        this.invocacionLibreEsteTurno = invocacionLibreEsteTurno;
+    }
+
     @Override
     public String toString() {
         return "ContextoBatalla{" +
@@ -117,6 +133,7 @@ public class ContextoBatalla {
             ", tropasPropias=" + tropasPropias.size() +
             ", tropasEnemigas=" + tropasEnemigas.size() +
             ", tropaSeleccionada=" + (tropaSeleccionada != null ? tropaSeleccionada.getClass().getSimpleName() : "null") +
+            ", invocacionLibreEsteTurno=" + invocacionLibreEsteTurno +
             '}';
     }
 }

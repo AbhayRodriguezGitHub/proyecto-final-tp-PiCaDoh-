@@ -8,7 +8,6 @@ public abstract class CartaEfecto {
     private final String nombre;
     private final Texture imagen;
 
-    // Ahora se pasa la ruta completa como parámetro
     public CartaEfecto(String nombre, String rutaImagen) {
         this.nombre = nombre;
         this.imagen = new Texture(Gdx.files.absolute(rutaImagen));
@@ -23,6 +22,11 @@ public abstract class CartaEfecto {
     }
 
     public abstract void aplicarEfecto(ContextoBatalla contexto);
+
+
+    public boolean esInstantaneo() {
+        return false;
+    }
 
     public void dispose() {
         if (imagen != null) {
