@@ -3,58 +3,39 @@ package mijuego.picadoh.batalla;
 import mijuego.picadoh.cartas.CartaTropa;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+
 
 public class ContextoBatalla {
     private static final int MAX_TROPAS_EN_CAMPO = 5;
     private static final int VIDA_MAXIMA = 80;
 
-    private List<CartaTropa> tropasPropias;
-    private List<CartaTropa> tropasEnemigas;
+    private final List<CartaTropa> tropasPropias;
+    private final List<CartaTropa> tropasEnemigas;
 
     private int vidaPropia;
     private int vidaEnemiga;
 
-
     private CartaTropa tropaSeleccionada;
 
-    private boolean limpiarCampoSolicitado = false;
+    private boolean limpiarCampoSolicitado = false;     // Bombardrilo
+    private boolean invocacionLibreEsteTurno = false;   // Anarquía de nivel
 
-    public boolean isLimpiarCampoSolicitado() {
-        return limpiarCampoSolicitado;
-    }
+    private boolean purgaPorNivelSolicitada = false;    // Monarquía/Rebelión
+    private final Set<Integer> nivelesAPurgar = new HashSet<>();
 
-    public void setLimpiarCampoSolicitado(boolean limpiarCampoSolicitado) {
-        this.limpiarCampoSolicitado = limpiarCampoSolicitado;
-    }
-    private boolean invocacionLibreEsteTurno = false;
 
-    private boolean purgaPorNivelSolicitada = false;
-    private final java.util.HashSet<Integer> nivelesAPurgar = new java.util.HashSet<>();
+    private boolean intercambioSolicitado = false;
 
-    public void solicitarPurgaPorNivel(int... niveles) {
-        nivelesAPurgar.clear();
-        for (int n : niveles) nivelesAPurgar.add(n);
-        purgaPorNivelSolicitada = true;
-    }
 
-    public boolean isPurgaPorNivelSolicitada() {
-        return purgaPorNivelSolicitada;
-    }
+    private final List<Runnable> reversionesTurno = new ArrayList<>();
 
-    public java.util.Set<Integer> getNivelesAPurgar() {
-        return nivelesAPurgar;
-    }
-
-    public void limpiarPurgaPorNivelSolicitud() {
-        purgaPorNivelSolicitada = false;
-        nivelesAPurgar.clear();
-    }
-
+    // ---- Constructores
     public ContextoBatalla(List<CartaTropa> propias, List<CartaTropa> enemigas) {
         this(propias, enemigas, VIDA_MAXIMA, VIDA_MAXIMA);
     }
-
 
     public ContextoBatalla(List<CartaTropa> propias, List<CartaTropa> enemigas, int vidaP, int vidaE) {
         this.tropasPropias = new ArrayList<>(propias);
@@ -63,7 +44,7 @@ public class ContextoBatalla {
         this.vidaEnemiga = vidaE;
     }
 
-    // Getters
+    // ---- Getters básicos
     public List<CartaTropa> getTropasPropias() {
         return tropasPropias;
     }
@@ -84,7 +65,11 @@ public class ContextoBatalla {
         return VIDA_MAXIMA;
     }
 
+    public CartaTropa getTropaSeleccionada() {
+        return tropaSeleccionada;
+    }
 
+    // ---- Vida
     public void restarVidaEnemiga(int cantidad) {
         vidaEnemiga -= cantidad;
         if (vidaEnemiga < 0) vidaEnemiga = 0;
@@ -105,7 +90,7 @@ public class ContextoBatalla {
         if (this.vidaEnemiga < 0) this.vidaEnemiga = 0;
     }
 
-    // Tropas
+    // ---- Tropas
     public boolean agregarTropaPropia(CartaTropa carta) {
         if (tropasPropias.size() < MAX_TROPAS_EN_CAMPO) {
             tropasPropias.add(carta);
@@ -130,21 +115,89 @@ public class ContextoBatalla {
         return tropasEnemigas.size() >= MAX_TROPAS_EN_CAMPO;
     }
 
-
+    // ---- Selección de tropa para efectos por-objetivo
     public void setTropaSeleccionada(CartaTropa tropa) {
         this.tropaSeleccionada = tropa;
     }
 
-    public CartaTropa getTropaSeleccionada() {
-        return tropaSeleccionada;
-    }
-
+    // ---- Invocación libre (Anarquía de Nivel)
     public boolean isInvocacionLibreEsteTurno() {
         return invocacionLibreEsteTurno;
     }
 
     public void setInvocacionLibreEsteTurno(boolean invocacionLibreEsteTurno) {
         this.invocacionLibreEsteTurno = invocacionLibreEsteTurno;
+    }
+
+    // ---- Limpieza de campo (Bombardrilo)
+    public boolean isLimpiarCampoSolicitado() {
+        return limpiarCampoSolicitado;
+    }
+
+    public void setLimpiarCampoSolicitado(boolean limpiarCampoSolicitado) {
+        this.limpiarCampoSolicitado = limpiarCampoSolicitado;
+    }
+
+    // ---- Purga por nivel (Monarquía/Rebelión)
+    public void solicitarPurgaPorNivel(int... niveles) {
+        nivelesAPurgar.clear();
+        for (int n : niveles) nivelesAPurgar.add(n);
+        purgaPorNivelSolicitada = true;
+    }
+
+    public boolean isPurgaPorNivelSolicitada() {
+        return purgaPorNivelSolicitada;
+    }
+
+    public Set<Integer> getNivelesAPurgar() {
+        return nivelesAPurgar;
+    }
+
+    public void limpiarPurgaPorNivelSolicitud() {
+        purgaPorNivelSolicitada = false;
+        nivelesAPurgar.clear();
+    }
+
+    // ---- Intercambio (swap ATK/DEF global 1 turno) - bandera opcional
+    public void solicitarIntercambio() {
+        intercambioSolicitado = true;
+    }
+
+    public boolean isIntercambioSolicitado() {
+        return intercambioSolicitado;
+    }
+
+    public void limpiarIntercambioSolicitud() {
+        intercambioSolicitado = false;
+    }
+
+
+    public void registrarReversionTurno(Runnable reversion) {
+        if (reversion != null) {
+            reversionesTurno.add(reversion);
+        }
+    }
+
+
+    public void revertirEfectosTurno() {
+        // Ejecutar en orden inverso por seguridad (LIFO)
+        for (int i = reversionesTurno.size() - 1; i >= 0; i--) {
+            try {
+                reversionesTurno.get(i).run();
+            } catch (Exception ex) {
+                System.out.println("[ContextoBatalla] Error revirtiendo efecto temporal: " + ex.getMessage());
+            }
+        }
+        reversionesTurno.clear();
+
+
+        invocacionLibreEsteTurno = false;
+        intercambioSolicitado = false;
+
+
+        limpiarCampoSolicitado = false;
+        purgaPorNivelSolicitada = false;
+        nivelesAPurgar.clear();
     }
 
     @Override
@@ -156,6 +209,11 @@ public class ContextoBatalla {
             ", tropasEnemigas=" + tropasEnemigas.size() +
             ", tropaSeleccionada=" + (tropaSeleccionada != null ? tropaSeleccionada.getClass().getSimpleName() : "null") +
             ", invocacionLibreEsteTurno=" + invocacionLibreEsteTurno +
+            ", limpiarCampoSolicitado=" + limpiarCampoSolicitado +
+            ", purgaPorNivelSolicitada=" + purgaPorNivelSolicitada +
+            ", nivelesAPurgar=" + nivelesAPurgar +
+            ", intercambioSolicitado=" + intercambioSolicitado +
+            ", reversionesTurno=" + reversionesTurno.size() +
             '}';
     }
 }

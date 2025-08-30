@@ -41,7 +41,9 @@ public class PantallaSeleccionEfecto implements Screen {
         Monarquia.class,
         Rebelion.class,
         MalDeAmores.class,
-        MagoDel8.class
+        MagoDel8.class,
+        Paracetamol.class,
+        Intercambio.class
 
     );
 
