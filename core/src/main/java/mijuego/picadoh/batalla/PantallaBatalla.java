@@ -359,7 +359,6 @@ public class PantallaBatalla implements Screen {
                                 break;
                             }
 
-
                             if (puedeInvocarPorNivel(cartaSeleccionada)) {
                                 ranura.setCarta(cartaSeleccionada);
                                 if (!cartaSeleccionada.invocar()) {
@@ -527,7 +526,7 @@ public class PantallaBatalla implements Screen {
                 int dañoJugador = cartaJugador.getAtaque();
                 int nuevaDefEnemigo = cartaEnemigo.getDefensa() - dañoJugador;
 
-                int dañoEnemigo = cartaEnemigo.getAtaque();
+                int dañoEnemigo = contexto.isAtaquesEnemigosAnuladosEsteTurno() ? 0 : cartaEnemigo.getAtaque();
                 int nuevaDefJugador = cartaJugador.getDefensa() - dañoEnemigo;
 
                 if (nuevaDefEnemigo <= 0) {
@@ -541,7 +540,7 @@ public class PantallaBatalla implements Screen {
 
                 if (nuevaDefJugador <= 0) {
                     int dañoRestante = -nuevaDefJugador;
-                    contexto.restarVidaPropia(dañoRestante);
+                    if (dañoRestante > 0) contexto.restarVidaPropia(dañoRestante);
                     ranuraJugador.setCarta(null);
                     System.out.println("[COMBATE] Carta del jugador destruida en ranura " + (i + 1));
                 } else {
@@ -555,8 +554,13 @@ public class PantallaBatalla implements Screen {
         }
 
         if (ranuraEnemigo.getCarta() != null && ranuraJugador.getCarta() == null) {
-            contexto.restarVidaPropia(ranuraEnemigo.getCarta().getAtaque());
-            System.out.println("[COMBATE] Ataque directo al jugador por " + ranuraEnemigo.getCarta().getAtaque() + " desde ranura enemiga " + (i + 1));
+            int dano = contexto.isAtaquesEnemigosAnuladosEsteTurno() ? 0 : ranuraEnemigo.getCarta().getAtaque();
+            if (dano > 0) {
+                contexto.restarVidaPropia(dano);
+                System.out.println("[COMBATE] Ataque directo al jugador por " + dano + " desde ranura enemiga " + (i + 1));
+            } else {
+                System.out.println("[COMBATE] Ataque enemigo anulado en ranura " + (i + 1));
+            }
         }
 
         verificarCondicionYTransicion();
@@ -668,7 +672,7 @@ public class PantallaBatalla implements Screen {
         }
 
         if (batallaEnCurso) {
-            tiempoHighlight += delta; // <-- usa el parámetro 'delta' del método, no declares otra variable
+            tiempoHighlight += delta;
             if (tiempoHighlight >= DURACION_HIGHLIGHT) {
                 procesarAtaqueRanura(ranuraActual);
                 ranuraActual++;
@@ -689,9 +693,7 @@ public class PantallaBatalla implements Screen {
                     if (!contexto.isInvocacionesIlimitadasEsteTurno()
                         && invocacionesTropaEsteTurno >= MAX_INVOC_TROPAS_TURNO) {
                         System.out.println("[INVOCACIÓN BLOQUEADA] Límite de invocaciones alcanzado.");
-
                     }
-
 
                     if (efectoEnRanuraJugador != null) {
                         System.out.println("[EFECTO] Finaliza duración del efecto: " + efectoEnRanuraJugador.getNombre());

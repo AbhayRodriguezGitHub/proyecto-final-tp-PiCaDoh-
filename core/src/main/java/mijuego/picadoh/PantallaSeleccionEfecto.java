@@ -17,13 +17,11 @@ public class PantallaSeleccionEfecto implements Screen {
     private final Principal juego;
     private Texture fondo;
 
-    // Cartas grandes de efectos (mismas medidas para ambas)
     private static final int L_X = 336;
     private static final int L_Y = 75;
     private static final int L_W = 924 - 336; // 588
     private static final int L_H = 793 - 75;  // 718
 
-    // Mantener el borde derecho en 1609 y usar el mismo tamaño que la izquierda
     private static final int R_W = L_W;       // 588
     private static final int R_H = L_H;       // 718
     private static final int R_X = 1609 - R_W; // 1021
@@ -44,7 +42,12 @@ public class PantallaSeleccionEfecto implements Screen {
         MagoDel8.class,
         Paracetamol.class,
         Intercambio.class,
-        Avaricioso.class
+        Avaricioso.class,
+        AgenteDeTransito.class,
+        EscudoFalso.class,
+        EscudoPlatinado.class,
+        Gangsterio.class,
+        Orikalkus.class
 
     );
 

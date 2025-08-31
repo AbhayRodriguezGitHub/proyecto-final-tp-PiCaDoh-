@@ -21,7 +21,12 @@ public final class RegistroEfectos {
         MagoDel8.class,
         Paracetamol.class,
         Intercambio.class,
-        Avaricioso.class
+        Avaricioso.class,
+        AgenteDeTransito.class,
+        EscudoFalso.class,
+        EscudoPlatinado.class,
+        Gangsterio.class,
+        Orikalkus.class
     );
 
     public static List<Class<? extends CartaEfecto>> efectosDisponibles() {

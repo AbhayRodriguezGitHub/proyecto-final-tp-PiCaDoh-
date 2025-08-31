@@ -23,13 +23,13 @@ public class ContextoBatalla {
     private boolean limpiarCampoSolicitado = false;      // Bombardrilo
     private boolean invocacionLibreEsteTurno = false;    // Anarquía de nivel
     private boolean invocacionesIlimitadasEsteTurno = false; // Avaricioso
+    private boolean ataquesEnemigosAnuladosEsteTurno = false; // Agente de Tránsito
 
     private boolean purgaPorNivelSolicitada = false;     // Monarquía/Rebelión
     private final Set<Integer> nivelesAPurgar = new HashSet<>();
 
-    private boolean intercambioSolicitado = false;       // Intercambio (si lo quisieras via flag)
+    private boolean intercambioSolicitado = false;
 
-    // Reversiones temporales (por turno)
     private final List<Runnable> reversionesTurno = new ArrayList<>();
 
     // Constructores
@@ -44,7 +44,7 @@ public class ContextoBatalla {
         this.vidaEnemiga = vidaE;
     }
 
-    // Getters básicos
+
     public List<CartaTropa> getTropasPropias() { return tropasPropias; }
     public List<CartaTropa> getTropasEnemigas() { return tropasEnemigas; }
     public int getVidaPropia() { return vidaPropia; }
@@ -104,6 +104,10 @@ public class ContextoBatalla {
     public boolean isInvocacionesIlimitadasEsteTurno() { return invocacionesIlimitadasEsteTurno; }
     public void setInvocacionesIlimitadasEsteTurno(boolean v) { this.invocacionesIlimitadasEsteTurno = v; }
 
+    // Agente de Tránsito (anula daño enemigo) - NUEVO
+    public boolean isAtaquesEnemigosAnuladosEsteTurno() { return ataquesEnemigosAnuladosEsteTurno; }
+    public void setAtaquesEnemigosAnuladosEsteTurno(boolean v) { this.ataquesEnemigosAnuladosEsteTurno = v; }
+
     // Bombardrilo
     public boolean isLimpiarCampoSolicitado() { return limpiarCampoSolicitado; }
     public void setLimpiarCampoSolicitado(boolean v) { this.limpiarCampoSolicitado = v; }
@@ -122,12 +126,12 @@ public class ContextoBatalla {
         nivelesAPurgar.clear();
     }
 
-    // Intercambio (si lo manejas por flag)
+
     public void solicitarIntercambio() { intercambioSolicitado = true; }
     public boolean isIntercambioSolicitado() { return intercambioSolicitado; }
     public void limpiarIntercambioSolicitud() { intercambioSolicitado = false; }
 
-    // Reversiones temporales
+
     public void registrarReversionTurno(Runnable reversion) {
         if (reversion != null) reversionesTurno.add(reversion);
     }
@@ -141,16 +145,17 @@ public class ContextoBatalla {
         }
         reversionesTurno.clear();
 
-        // Reset de flags de turno
+
         invocacionLibreEsteTurno = false;
         invocacionesIlimitadasEsteTurno = false;
+        ataquesEnemigosAnuladosEsteTurno = false;
         intercambioSolicitado = false;
         limpiarCampoSolicitado = false;
         purgaPorNivelSolicitada = false;
         nivelesAPurgar.clear();
     }
 
-    // Alias para compatibilidad con PantallaBatalla que llame a este nombre
+
     public void revertirEfectosTemporales() {
         revertirEfectosTurno();
     }
@@ -165,6 +170,7 @@ public class ContextoBatalla {
             ", tropaSeleccionada=" + (tropaSeleccionada != null ? tropaSeleccionada.getClass().getSimpleName() : "null") +
             ", invocacionLibreEsteTurno=" + invocacionLibreEsteTurno +
             ", invocacionesIlimitadasEsteTurno=" + invocacionesIlimitadasEsteTurno +
+            ", ataquesEnemigosAnuladosEsteTurno=" + ataquesEnemigosAnuladosEsteTurno +
             ", limpiarCampoSolicitado=" + limpiarCampoSolicitado +
             ", purgaPorNivelSolicitada=" + purgaPorNivelSolicitada +
             ", nivelesAPurgar=" + nivelesAPurgar +
