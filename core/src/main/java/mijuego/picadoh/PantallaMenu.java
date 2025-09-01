@@ -12,6 +12,8 @@ import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 
+import mijuego.picadoh.taberna.PantallaTaberna;
+
 public class PantallaMenu implements Screen {
     private final Principal juego;
     private Texture fondo;
@@ -26,22 +28,19 @@ public class PantallaMenu implements Screen {
     public void show() {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/FONDOMENU1.png"));
 
-        // Aplica el cursor correcto
         if (juego.isCursorPersonalizadoUsado()) {
             juego.setCursorPersonalizado();
         } else {
             Gdx.graphics.setSystemCursor(Cursor.SystemCursor.Arrow);
         }
 
-        // Inicia la música si no está sonando
         juego.reproducirMusica();
 
         stage = new Stage(new ScreenViewport());
         Gdx.input.setInputProcessor(stage);
 
-        // Skin y fuente para botones invisibles
         skin = new Skin();
-        BitmapFont font = new BitmapFont(); // Fuente por defecto
+        BitmapFont font = new BitmapFont();
         skin.add("default", font);
 
         TextButton.TextButtonStyle estiloInvisible = new TextButton.TextButtonStyle();
@@ -51,41 +50,47 @@ public class PantallaMenu implements Screen {
         estiloInvisible.over = null;
         skin.add("default", estiloInvisible);
 
-        // 🔧 Botón invisible de CONFIGURACIÓN (tuerquita abajo izquierda)
         TextButton btnConfig = new TextButton("", skin);
         btnConfig.setBounds(20, 20, 80, 80);
         btnConfig.addListener(new ClickListener() {
             public void clicked(InputEvent event, float x, float y) {
-                System.out.println(">>> CONFIGURACIÓN clickeada!");
                 juego.setScreen(new PantallaConfiguracion(juego));
             }
         });
         stage.addActor(btnConfig);
 
-        // 🔥 Botón BATALLA
         TextButton btnBatalla = new TextButton("", skin);
         btnBatalla.setBounds(320, 750, 640, 180);
         btnBatalla.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                System.out.println(">>> BATALLA clickeada! Iniciando selección de tropa...");
                 juego.detenerMusica();
                 juego.setScreen(new PantallaSeleccionTropa(juego));
             }
         });
         stage.addActor(btnBatalla);
 
-        // ❌ Botón SALIR
         TextButton btnSalir = new TextButton("", skin);
         btnSalir.setBounds(320, 180, 640, 180);
         btnSalir.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                System.out.println(">>> SALIR clickeado! Cerrando juego...");
                 Gdx.app.exit();
             }
         });
         stage.addActor(btnSalir);
+
+        TextButton btnTaberna = new TextButton("", skin);
+        btnTaberna.setBounds(325, 475, 958 - 325, 650 - 475);
+        btnTaberna.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                // Corta música actual y cambia de pantalla
+                juego.detenerMusicaActual();
+                juego.setScreen(new PantallaTaberna(juego));
+            }
+        });
+        stage.addActor(btnTaberna);
     }
 
     @Override
@@ -102,17 +107,35 @@ public class PantallaMenu implements Screen {
     public void resize(int width, int height) {
         stage.getViewport().update(width, height, true);
         juego.aplicarCursor();
-        // Ya no reposicionamos botones, respetamos las coordenadas absolutas
     }
 
     @Override public void pause() {}
     @Override public void resume() {}
-    @Override public void hide() {}
+
+
+    @Override
+    public void hide() {
+        Gdx.input.setInputProcessor(null);
+        if (stage != null) {
+            stage.clear();
+            stage.dispose();
+            stage = null;
+        }
+        if (skin != null) {
+            skin.dispose();
+            skin = null;
+        }
+        if (fondo != null) {
+            fondo.dispose();
+            fondo = null;
+        }
+    }
 
     @Override
     public void dispose() {
-        fondo.dispose();
-        stage.dispose();
-        skin.dispose();
+
+        if (stage != null) stage.dispose();
+        if (skin != null) skin.dispose();
+        if (fondo != null) fondo.dispose();
     }
 }
