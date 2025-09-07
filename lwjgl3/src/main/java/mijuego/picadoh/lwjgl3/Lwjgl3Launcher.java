@@ -11,7 +11,7 @@ import mijuego.picadoh.Principal;
 public class Lwjgl3Launcher {
 
     public static void main(String[] args) {
-        // Esta línea es necesaria para soporte en macOS y ayuda en Windows.
+        // Esta línea es necesaria para soporte en macOS y ayuda en Windows
         if (StartupHelper.startNewJvmIfRequired()) return;
         createApplication();
     }
