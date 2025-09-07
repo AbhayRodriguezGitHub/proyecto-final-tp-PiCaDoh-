@@ -22,7 +22,7 @@ public class Lwjgl3Launcher {
     }
 
     /**
-     * Configura los parámetros de la ventana del juego.
+     * Configura los parámetros de la ventana del juego
      */
     private static Lwjgl3ApplicationConfiguration getDefaultConfiguration() {
         Lwjgl3ApplicationConfiguration configuration = new Lwjgl3ApplicationConfiguration();
