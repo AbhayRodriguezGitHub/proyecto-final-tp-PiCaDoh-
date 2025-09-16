@@ -6,31 +6,36 @@ import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.graphics.Cursor;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
-import com.badlogic.gdx.utils.viewport.ScreenViewport;
+import com.badlogic.gdx.utils.viewport.FitViewport;
+import com.badlogic.gdx.utils.viewport.Viewport;
 
 import mijuego.picadoh.Principal;
 import mijuego.picadoh.PantallaMenu;
 
 public class PantallaTaberna implements Screen {
 
+    private static final float VW = 1920f;
+    private static final float VH = 1080f;
+
     private final Principal juego;
     private Texture fondo;
     private Stage stage;
     private Skin skin;
 
-    // ─────────────────────────────────────────────────────────
-    // RADIO DE TABERNA (persistente entre instancias de pantalla)
-    // ─────────────────────────────────────────────────────────
+    private OrthographicCamera camara;
+    private Viewport viewport;
+
+
     private static Music[] pistas;              // se crean una sola vez
     private static int indicePistaActual = 0;   // índice actual
     private static Music musicaActual;          // pista actualmente sonando
 
-    // Para NO cortar la música al ir a Salón
     private boolean mantenerMusicaAlSalir = false;
 
     public PantallaTaberna(Principal juego) {
@@ -39,10 +44,16 @@ public class PantallaTaberna implements Screen {
 
     @Override
     public void show() {
-        stage = new Stage(new ScreenViewport());
+        // Cámara + Viewport (mantiene relación de aspecto y agrega barras si hace falta)
+        camara = new OrthographicCamera();
+        viewport = new FitViewport(VW, VH, camara);
+        viewport.apply(true);
+        camara.position.set(VW / 2f, VH / 2f, 0f);
+        camara.update();
+
+        stage = new Stage(viewport);
         Gdx.input.setInputProcessor(stage);
 
-        // Apagar cualquier música global del Principal (menús, etc.)
         juego.detenerMusicaActual();
 
         if (juego.isCursorPersonalizadoUsado()) {
@@ -53,26 +64,18 @@ public class PantallaTaberna implements Screen {
 
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/taberna/TABERNA.png"));
 
-        // ─────────────────────────────────────────────────────────
-        // Inicializar la radio una sola vez (reutilizable)
-        // ─────────────────────────────────────────────────────────
         if (pistas == null) {
             pistas = new Music[10];
             for (int i = 0; i < pistas.length; i++) {
-                final int idx = i; // capturar índice correcto para el listener
+                final int idx = i;
                 pistas[i] = Gdx.audio.newMusic(Gdx.files.absolute("lwjgl3/assets/taberna/TABERNA" + (i + 1) + ".mp3"));
                 pistas[i].setOnCompletionListener(music -> reproducirPista((idx + 1) % pistas.length));
             }
         }
-
-        // Si no hay música sonando aún, arrancar la actual; si ya suena, NO tocarla.
         if (musicaActual == null || !musicaActual.isPlaying()) {
             reproducirPista(indicePistaActual);
         }
 
-        // ─────────────────────────────────────────────────────────
-        // UI invisible
-        // ─────────────────────────────────────────────────────────
         skin = new Skin();
         BitmapFont font = new BitmapFont();
         skin.add("default", font);
@@ -89,14 +92,12 @@ public class PantallaTaberna implements Screen {
         btnAtras.setBounds(26, 940, 150 - 26, 1064 - 940);
         btnAtras.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
-                detenerMusicaTaberna(); // acá sí paramos al salir al Menú
-                System.out.println("[TABERNA] Volviendo al menú principal...");
+                detenerMusicaTaberna();
                 juego.setScreen(new PantallaMenu(juego));
             }
         });
         stage.addActor(btnAtras);
 
-        // Botón radio (siguiente pista)
         TextButton btnRadio = new TextButton("", skin);
         btnRadio.setBounds(1510, 374, 1684 - 1510, 579 - 374);
         btnRadio.addListener(new ClickListener() {
@@ -107,32 +108,19 @@ public class PantallaTaberna implements Screen {
         });
         stage.addActor(btnRadio);
 
-        // Botón invisible para ir al SALÓN 1 (X: 1410..1548, Y: 117..255)
         TextButton btnSalon1 = new TextButton("", skin);
         btnSalon1.setBounds(1410, 117, 1548 - 1410, 255 - 117);
         btnSalon1.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
-                // No cortar la música: la dejamos sonando
-                mantenerMusicaAlSalir = true;
-                System.out.println("[TABERNA] Ir a PantallaSalon1 (manteniendo música)");
+                mantenerMusicaAlSalir = true;          // dejamos sonando la radio
                 juego.setScreen(new PantallaSalon1(juego));
             }
         });
         stage.addActor(btnSalon1);
     }
 
-    // ─────────────────────────────────────────────────────────
-    // Reproducir pista: detiene SOLO la actual y arranca la nueva
-    // (sin tocar objetos Music de otras instancias ni recrearlos)
-    // ─────────────────────────────────────────────────────────
     private void reproducirPista(int indice) {
-        if (pistas == null || pistas.length == 0) return;
-
-        // Detener solo la actual (si la hay)
-        if (musicaActual != null && musicaActual.isPlaying()) {
-            musicaActual.stop();
-        }
-
+        if (musicaActual != null && musicaActual.isPlaying()) musicaActual.stop();
         indicePistaActual = indice;
         musicaActual = pistas[indicePistaActual];
         if (musicaActual != null) {
@@ -147,7 +135,6 @@ public class PantallaTaberna implements Screen {
     }
 
     private void detenerMusicaTaberna() {
-        // Detener SOLO la que está sonando en la radio de Taberna
         if (musicaActual != null && musicaActual.isPlaying()) {
             musicaActual.stop();
         }
@@ -155,8 +142,10 @@ public class PantallaTaberna implements Screen {
 
     @Override
     public void render(float delta) {
+        juego.batch.setProjectionMatrix(camara.combined);
+
         juego.batch.begin();
-        juego.batch.draw(fondo, 0, 0, 1920, 1080);
+        juego.batch.draw(fondo, 0, 0, VW, VH);
         juego.batch.end();
 
         stage.act(delta);
@@ -165,7 +154,7 @@ public class PantallaTaberna implements Screen {
 
     @Override
     public void resize(int width, int height) {
-        stage.getViewport().update(width, height, true);
+        viewport.update(width, height, true);
     }
 
     @Override public void pause() {}
@@ -173,37 +162,22 @@ public class PantallaTaberna implements Screen {
 
     @Override
     public void hide() {
-        // Si vamos a Salón, dejamos que la música siga sonando.
-        // Si NO (por ejemplo a Menú), ya la paramos en el botón atrás.
-        if (!mantenerMusicaAlSalir) {
-            detenerMusicaTaberna();
-        }
+        // Si vamos a los Salones, la música sigue. Si vamos al menú, ya la detuvimos en el botón.
+        if (!mantenerMusicaAlSalir) detenerMusicaTaberna();
         mantenerMusicaAlSalir = false;
 
         Gdx.input.setInputProcessor(null);
 
-        if (stage != null) {
-            stage.clear();
-            stage.dispose();
-            stage = null;
-        }
-        if (skin != null) {
-            skin.dispose();
-            skin = null;
-        }
-        if (fondo != null) {
-            fondo.dispose();
-            fondo = null;
-        }
-        // Importante: NO dispose() de pistas/musicaActual aquí,
-        // porque la radio es estática y debe persistir.
+        if (stage != null) { stage.clear(); stage.dispose(); stage = null; }
+        if (skin  != null) { skin.dispose();  skin  = null; }
+        if (fondo != null) { fondo.dispose(); fondo = null; }
     }
 
     @Override
     public void dispose() {
-        // No liberar pistas aquí para que la radio persista entre pantallas.
         if (stage != null) stage.dispose();
-        if (skin != null) skin.dispose();
+        if (skin  != null) skin.dispose();
         if (fondo != null) fondo.dispose();
+        // No liberamos las pistas: persisten mientras dure el proceso.
     }
 }

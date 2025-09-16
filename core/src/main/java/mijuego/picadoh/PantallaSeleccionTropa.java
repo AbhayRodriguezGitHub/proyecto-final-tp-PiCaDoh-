@@ -4,7 +4,11 @@ import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.InputAdapter;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.utils.ScreenUtils;
+import com.badlogic.gdx.utils.viewport.FitViewport;
+import com.badlogic.gdx.utils.viewport.Viewport;
 import mijuego.picadoh.cartas.*;
 
 import java.util.*;
@@ -13,19 +17,22 @@ public class PantallaSeleccionTropa implements Screen {
     private final Principal juego;
     private Texture fondo;
 
+    // Mundo virtual fijo
+    private static final float VW = 1920f;
+    private static final float VH = 1080f;
+
+    private OrthographicCamera camara;
+    private Viewport viewport;
 
     private static final int L_X = 336;
     private static final int L_Y = 75;
     private static final int L_W = 568;
     private static final int L_H = 752 - 75;
 
-
-
     private static final int R_X = 1023;
     private static final int R_Y = 75;
     private static final int R_W = 1589 - 1021;
     private static final int R_H = 752 - 75;
-
 
     private final List<Class<? extends CartaTropa>> clasesDisponibles = RegistroCartas.tropasDisponibles();
 
@@ -44,21 +51,32 @@ public class PantallaSeleccionTropa implements Screen {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/ELECCIONTROPA.png"));
         juego.reproducirMusicaSeleccion();
 
+        // Cámara + Viewport (mantiene proporción; agrega barras si hace falta)
+        camara = new OrthographicCamera();
+        viewport = new FitViewport(VW, VH, camara);
+        viewport.apply(true);
+        camara.position.set(VW / 2f, VH / 2f, 0f);
+        camara.update();
+
         generarNuevoParDeCartas();
 
         Gdx.input.setInputProcessor(new InputAdapter() {
+            private final Vector2 tmp = new Vector2();
+
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
                 if (esperandoTransicion) return true;
 
-                int yInvertida = Gdx.graphics.getHeight() - screenY;
+
+                tmp.set(screenX, screenY);
+                viewport.unproject(tmp);
 
                 // Hitbox izquierda
-                if (screenX >= L_X && screenX <= L_X + L_W && yInvertida >= L_Y && yInvertida <= L_Y + L_H) {
+                if (tmp.x >= L_X && tmp.x <= L_X + L_W && tmp.y >= L_Y && tmp.y <= L_Y + L_H) {
                     cartaSeleccionada = carta1;
                 }
                 // Hitbox derecha
-                else if (screenX >= R_X && screenX <= R_X + R_W && yInvertida >= R_Y && yInvertida <= R_Y + R_H) {
+                else if (tmp.x >= R_X && tmp.x <= R_X + R_W && tmp.y >= R_Y && tmp.y <= R_Y + R_H) {
                     cartaSeleccionada = carta2;
                 } else {
                     cartaSeleccionada = null;
@@ -110,8 +128,12 @@ public class PantallaSeleccionTropa implements Screen {
     @Override
     public void render(float delta) {
         ScreenUtils.clear(0, 0, 0, 1);
+
+        // Proyectar el batch con la cámara del viewport (reescalado correcto)
+        juego.batch.setProjectionMatrix(camara.combined);
+
         juego.batch.begin();
-        juego.batch.draw(fondo, 0, 0, 1920, 1080);
+        juego.batch.draw(fondo, 0, 0, VW, VH);
 
         if (!esperandoTransicion) {
             if (carta1 != null) juego.batch.draw(carta1.getImagen(), L_X, L_Y, L_W, L_H);
@@ -129,7 +151,11 @@ public class PantallaSeleccionTropa implements Screen {
         }
     }
 
-    @Override public void resize(int width, int height) {}
+    @Override
+    public void resize(int width, int height) {
+        viewport.update(width, height, true);
+    }
+
     @Override public void pause() {}
     @Override public void resume() {}
     @Override public void hide() {}

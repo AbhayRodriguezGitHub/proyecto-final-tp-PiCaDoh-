@@ -6,11 +6,15 @@ import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.Texture;
+import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.graphics.g2d.freetype.FreeTypeFontGenerator;
+import com.badlogic.gdx.math.Vector3;
+import com.badlogic.gdx.utils.viewport.FitViewport;
+import com.badlogic.gdx.utils.viewport.Viewport;
 import mijuego.picadoh.Principal;
 import mijuego.picadoh.cartas.CartaTropa;
 import mijuego.picadoh.efectos.CartaEfecto;
@@ -28,6 +32,11 @@ public class PantallaBatalla implements Screen {
     private Texture vida2Img;
     private Texture vida3Img;
     private Texture vida4Img;
+
+    // Cámara + Viewport para escalar correctamente todo
+    private final OrthographicCamera camera;
+    private final Viewport viewport;
+    private final Vector3 tmpUnproject = new Vector3();
 
     private static final float VIDA_IMG_X = 347f;
     private static final float VIDA_IMG_Y = 469f;
@@ -163,6 +172,13 @@ public class PantallaBatalla implements Screen {
         this.juego = juego;
         this.batch = new SpriteBatch();
         this.shapeRenderer = new ShapeRenderer();
+
+        // Mundo virtual fijo 1920x1080; lo demás se ajusta con el viewport.
+        this.camera = new OrthographicCamera();
+        this.viewport = new FitViewport(1920f, 1080f, camera);
+        camera.position.set(960f, 540f, 0f);
+        camera.update();
+
         this.fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/VALLEMISTICO.png"));
         this.imgSiguiente = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/SIGUIENTE.png"));
         vida2Img = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/VIDA2.png"));
@@ -271,14 +287,21 @@ public class PantallaBatalla implements Screen {
                 return false;
             }
 
+            private void unproj(int screenX, int screenY) {
+                tmpUnproject.set(screenX, screenY, 0f);
+                viewport.unproject(tmpUnproject); // → coords del mundo 1920×1080
+            }
+
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
                 if (batallaEnCurso || partidaTerminada) return false;
 
-                int yInvertida = Gdx.graphics.getHeight() - screenY;
+                unproj(screenX, screenY);
+                float wx = tmpUnproject.x;
+                float wy = tmpUnproject.y;
 
-                if (screenX >= BOTON_PLAY_X && screenX <= BOTON_PLAY_X + BOTON_PLAY_ANCHO &&
-                    yInvertida >= BOTON_PLAY_Y && yInvertida <= BOTON_PLAY_Y + BOTON_PLAY_ALTO) {
+                if (wx >= BOTON_PLAY_X && wx <= BOTON_PLAY_X + BOTON_PLAY_ANCHO &&
+                    wy >= BOTON_PLAY_Y && wy <= BOTON_PLAY_Y + BOTON_PLAY_ALTO) {
                     iniciarBatallaConSiguiente();
                     System.out.println("[INPUT] Botón PLAY presionado → inicia batalla");
                     return true;
@@ -287,13 +310,13 @@ public class PantallaBatalla implements Screen {
                 for (int i = 0; i < manoEfectos.size(); i++) {
                     float x = (EFECTOS_BORDE_DER - ANCHO_CARTA) - (ANCHO_CARTA + ESPACIO_CARTAS) * i;
                     float y = Y_CARTA_MANO_DERECHA;
-                    if (screenX >= x && screenX <= x + ANCHO_CARTA &&
-                        yInvertida >= y && yInvertida <= y + ALTURA_CARTA + 30) {
+                    if (wx >= x && wx <= x + ANCHO_CARTA &&
+                        wy >= y && wy <= y + ALTURA_CARTA + 30) {
                         cartaEfectoSeleccionada = manoEfectos.get(i);
                         indiceEfectoTomado = i;
                         manoEfectos.remove(i);
-                        efectoDragX = screenX - ANCHO_CARTA / 2f;
-                        efectoDragY = yInvertida - ALTURA_CARTA / 2f;
+                        efectoDragX = wx - ANCHO_CARTA / 2f;
+                        efectoDragY = wy - ALTURA_CARTA / 2f;
                         arrastrandoEfecto = true;
                         return true;
                     }
@@ -301,11 +324,11 @@ public class PantallaBatalla implements Screen {
 
                 for (int i = 0; i < manoTropas.size(); i++) {
                     float x = TROPAS_X_INICIO + i * (ANCHO_CARTA + ESPACIO_CARTAS);
-                    if (screenX >= x && screenX <= x + ANCHO_CARTA &&
-                        yInvertida >= Y_CARTA_MANO && yInvertida <= Y_CARTA_MANO + ALTURA_CARTA + 30) {
+                    if (wx >= x && wx <= x + ANCHO_CARTA &&
+                        wy >= Y_CARTA_MANO && wy <= Y_CARTA_MANO + ALTURA_CARTA + 30) {
                         cartaSeleccionada = manoTropas.get(i);
-                        cartaDragX = screenX - ANCHO_CARTA / 2;
-                        cartaDragY = yInvertida - ALTURA_CARTA / 2;
+                        cartaDragX = wx - ANCHO_CARTA / 2f;
+                        cartaDragY = wy - ALTURA_CARTA / 2f;
                         arrastrando = true;
                         return true;
                     }
@@ -317,14 +340,17 @@ public class PantallaBatalla implements Screen {
             public boolean touchDragged(int screenX, int screenY, int pointer) {
                 if (batallaEnCurso || partidaTerminada) return false;
 
-                if (arrastrando && cartaSeleccionada != null) {
-                    cartaDragX = screenX - ANCHO_CARTA / 2;
-                    cartaDragY = Gdx.graphics.getHeight() - screenY - ALTURA_CARTA / 2;
+                unproj(screenX, screenY);
+                float wx = tmpUnproject.x;
+                float wy = tmpUnproject.y;
 
-                    int mouseY = Gdx.graphics.getHeight() - screenY;
+                if (arrastrando && cartaSeleccionada != null) {
+                    cartaDragX = wx - ANCHO_CARTA / 2f;
+                    cartaDragY = wy - ALTURA_CARTA / 2f;
+
                     ranuraHover = null;
                     for (Ranura ranura : ranuras) {
-                        if (ranura.contiene(screenX, mouseY) && (ranura.getCarta() == null)) {
+                        if (ranura.contiene((int) wx, (int) wy) && (ranura.getCarta() == null)) {
                             ranuraHover = ranura;
                             break;
                         }
@@ -332,13 +358,12 @@ public class PantallaBatalla implements Screen {
                 }
 
                 if (arrastrandoEfecto && cartaEfectoSeleccionada != null) {
-                    efectoDragX = screenX - ANCHO_CARTA / 2f;
-                    efectoDragY = Gdx.graphics.getHeight() - screenY - ALTURA_CARTA / 2f;
+                    efectoDragX = wx - ANCHO_CARTA / 2f;
+                    efectoDragY = wy - ALTURA_CARTA / 2f;
 
-                    int mouseY = Gdx.graphics.getHeight() - screenY;
                     hoverRanuraEfectoJugador =
-                        screenX >= EFECTO_JUG_X1 && screenX <= EFECTO_JUG_X2 &&
-                            mouseY >= EFECTO_JUG_Y1 && mouseY <= EFECTO_JUG_Y2;
+                        wx >= EFECTO_JUG_X1 && wx <= EFECTO_JUG_X2 &&
+                            wy >= EFECTO_JUG_Y1 && wy <= EFECTO_JUG_Y2;
                 }
                 return true;
             }
@@ -347,11 +372,13 @@ public class PantallaBatalla implements Screen {
             public boolean touchUp(int screenX, int screenY, int pointer, int button) {
                 if (batallaEnCurso || partidaTerminada) return false;
 
-                int mouseY = Gdx.graphics.getHeight() - screenY;
+                unproj(screenX, screenY);
+                float wx = tmpUnproject.x;
+                float wy = tmpUnproject.y;
 
                 if (arrastrando && cartaSeleccionada != null) {
                     for (Ranura ranura : ranuras) {
-                        if (ranura.contiene(screenX, mouseY) && ranura.getCarta() == null) {
+                        if (ranura.contiene((int) wx, (int) wy) && ranura.getCarta() == null) {
 
                             if (!contexto.isInvocacionesIlimitadasEsteTurno()
                                 && invocacionesTropaEsteTurno >= MAX_INVOC_TROPAS_TURNO) {
@@ -380,8 +407,8 @@ public class PantallaBatalla implements Screen {
 
                 if (arrastrandoEfecto && cartaEfectoSeleccionada != null) {
                     boolean invocado = false;
-                    if (screenX >= EFECTO_JUG_X1 && screenX <= EFECTO_JUG_X2 &&
-                        mouseY >= EFECTO_JUG_Y1 && mouseY <= EFECTO_JUG_Y2 &&
+                    if (wx >= EFECTO_JUG_X1 && wx <= EFECTO_JUG_X2 &&
+                        wy >= EFECTO_JUG_Y1 && wy <= EFECTO_JUG_Y2 &&
                         efectoEnRanuraJugador == null) {
                         efectoEnRanuraJugador = cartaEfectoSeleccionada;
                         System.out.println("[EFECTO] Colocado efecto en ranura: " + efectoEnRanuraJugador.getNombre());
@@ -443,13 +470,15 @@ public class PantallaBatalla implements Screen {
                     return false;
                 }
 
-                int yInvertida = Gdx.graphics.getHeight() - screenY;
+                unproj(screenX, screenY);
+                float wx = tmpUnproject.x;
+                float wy = tmpUnproject.y;
 
                 cartaHoverIndex = -1;
                 for (int i = 0; i < manoTropas.size(); i++) {
                     float x = TROPAS_X_INICIO + i * (ANCHO_CARTA + ESPACIO_CARTAS);
-                    if (screenX >= x && screenX <= x + ANCHO_CARTA &&
-                        yInvertida >= Y_CARTA_MANO && yInvertida <= Y_CARTA_MANO + ALTURA_CARTA + 30) {
+                    if (wx >= x && wx <= x + ANCHO_CARTA &&
+                        wy >= Y_CARTA_MANO && wy <= Y_CARTA_MANO + ALTURA_CARTA + 30) {
                         cartaHoverIndex = i;
                         break;
                     }
@@ -459,8 +488,8 @@ public class PantallaBatalla implements Screen {
                 for (int i = 0; i < manoEfectos.size(); i++) {
                     float x = (EFECTOS_BORDE_DER - ANCHO_CARTA) - (ANCHO_CARTA + ESPACIO_CARTAS) * i;
                     float y = Y_CARTA_MANO_DERECHA;
-                    if (screenX >= x && screenX <= x + ANCHO_CARTA &&
-                        yInvertida >= y && yInvertida <= y + ALTURA_CARTA + 30) {
+                    if (wx >= x && wx <= x + ANCHO_CARTA &&
+                        wy >= y && wy <= y + ALTURA_CARTA + 30) {
                         efectoHoverIndex = i;
                         break;
                     }
@@ -575,6 +604,11 @@ public class PantallaBatalla implements Screen {
     @Override
     public void render(float delta) {
         if (partidaTerminada) return;
+
+        // Aplicar viewport y matrices de proyección antes de dibujar
+        viewport.apply();
+        batch.setProjectionMatrix(camera.combined);
+        shapeRenderer.setProjectionMatrix(camera.combined);
 
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
@@ -865,7 +899,9 @@ public class PantallaBatalla implements Screen {
         fuenteVida.draw(batch, layout, textX, textY);
     }
 
-    @Override public void resize(int width, int height) {}
+    @Override public void resize(int width, int height) {
+        viewport.update(width, height, true); // mantiene centrado el mundo 1920×1080
+    }
     @Override public void pause() {}
     @Override public void resume() {}
     @Override public void hide() {}
