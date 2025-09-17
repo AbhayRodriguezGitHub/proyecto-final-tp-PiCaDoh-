@@ -49,7 +49,6 @@ public class PantallaSalon1 implements Screen {
         camara.position.set(VW / 2f, VH / 2f, 0f);
         camara.update();
 
-        // Stage usando el MISMO viewport (así los botones escalan igual que el fondo)
         stage = new Stage(viewport);
         Gdx.input.setInputProcessor(stage);
 
@@ -57,54 +56,57 @@ public class PantallaSalon1 implements Screen {
 
         skin = new Skin();
         BitmapFont font = new BitmapFont();
-        skin.add("default", font);
+        skin.add("default-font", font);
 
         TextButton.TextButtonStyle estiloInvisible = new TextButton.TextButtonStyle();
         estiloInvisible.font = font;
-        estiloInvisible.up = null;
-        estiloInvisible.down = null;
-        estiloInvisible.over = null;
-        skin.add("default", estiloInvisible);
+        estiloInvisible.up = null;  estiloInvisible.down = null;  estiloInvisible.over = null;
+        skin.add("invisible", estiloInvisible);
 
-        TextButton btnVolverTaberna = new TextButton("", skin);
+        TextButton btnVolverTaberna = new TextButton("", skin, "invisible");
         btnVolverTaberna.setBounds(256, 311, 356 - 256, 409 - 311); // w=100, h=98
         btnVolverTaberna.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
-                Gdx.app.log("[SALON1]", "Volviendo a PantallaTaberna");
                 juego.setScreen(new PantallaTaberna(juego));
             }
         });
         stage.addActor(btnVolverTaberna);
 
-        TextButton btnIrSalon2 = new TextButton("", skin);
+        TextButton btnIrSalon2 = new TextButton("", skin, "invisible");
         btnIrSalon2.setBounds(1539, 317, 1635 - 1539, 406 - 317); // w=96, h=89
         btnIrSalon2.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
-                Gdx.app.log("[SALON1]", "Ir a PantallaSalon2 (manteniendo música)");
                 juego.setScreen(new PantallaSalon2(juego));
             }
         });
         stage.addActor(btnIrSalon2);
+
+        TextButton btnS11 = new TextButton("", skin, "invisible");
+        btnS11.setBounds(234f, 697f, 147f, 161f);
+        btnS11.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S11.png"
+                ));
+            }
+        });
+        stage.addActor(btnS11);
     }
 
     @Override
     public void render(float delta) {
-        // Proyectar el batch con la cámara del viewport
         juego.batch.setProjectionMatrix(camara.combined);
-
         juego.batch.begin();
-        juego.batch.draw(fondo, 0, 0, VW, VH); // dibujar en el mundo virtual
+        juego.batch.draw(fondo, 0, 0, VW, VH);
         juego.batch.end();
 
         stage.act(delta);
         stage.draw();
     }
 
-    @Override
-    public void resize(int width, int height) {
-        viewport.update(width, height, true);
-    }
-
+    @Override public void resize(int width, int height) { viewport.update(width, height, true); }
     @Override public void pause() {}
     @Override public void resume() {}
 
