@@ -36,7 +36,6 @@ public class PantallaSalon1 implements Screen {
 
     @Override
     public void show() {
-        // Mantener música (no tocar)
         if (juego.isCursorPersonalizadoUsado()) {
             juego.setCursorPersonalizado();
         } else {
@@ -60,11 +59,11 @@ public class PantallaSalon1 implements Screen {
 
         TextButton.TextButtonStyle estiloInvisible = new TextButton.TextButtonStyle();
         estiloInvisible.font = font;
-        estiloInvisible.up = null;  estiloInvisible.down = null;  estiloInvisible.over = null;
+        estiloInvisible.up = null; estiloInvisible.down = null; estiloInvisible.over = null;
         skin.add("invisible", estiloInvisible);
 
         TextButton btnVolverTaberna = new TextButton("", skin, "invisible");
-        btnVolverTaberna.setBounds(256, 311, 356 - 256, 409 - 311); // w=100, h=98
+        btnVolverTaberna.setBounds(256, 311, 100, 98);
         btnVolverTaberna.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaTaberna(juego));
@@ -73,7 +72,7 @@ public class PantallaSalon1 implements Screen {
         stage.addActor(btnVolverTaberna);
 
         TextButton btnIrSalon2 = new TextButton("", skin, "invisible");
-        btnIrSalon2.setBounds(1539, 317, 1635 - 1539, 406 - 317); // w=96, h=89
+        btnIrSalon2.setBounds(1539, 317, 96, 89);
         btnIrSalon2.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaSalon2(juego));
@@ -93,6 +92,58 @@ public class PantallaSalon1 implements Screen {
             }
         });
         stage.addActor(btnS11);
+
+        TextButton btnS12 = new TextButton("", skin, "invisible");
+        btnS12.setBounds(446f, 697f, 150f, 161f);
+        btnS12.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S12.png"
+                ));
+            }
+        });
+        stage.addActor(btnS12);
+
+        TextButton btnS13 = new TextButton("", skin, "invisible");
+        btnS13.setBounds(661f, 697f, 148f, 161f);
+        btnS13.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S13.png"
+                ));
+            }
+        });
+        stage.addActor(btnS13);
+
+        TextButton btnS14 = new TextButton("", skin, "invisible");
+        btnS14.setBounds(872f, 697f, 152f, 161f);
+        btnS14.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S14.png"
+                ));
+            }
+        });
+        stage.addActor(btnS14);
+
+        TextButton btnS15 = new TextButton("", skin, "invisible");
+        btnS15.setBounds(1085f, 697f, 150f, 161f);
+        btnS15.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S15.png"
+                ));
+            }
+        });
+        stage.addActor(btnS15);
     }
 
     @Override
@@ -109,10 +160,8 @@ public class PantallaSalon1 implements Screen {
     @Override public void resize(int width, int height) { viewport.update(width, height, true); }
     @Override public void pause() {}
     @Override public void resume() {}
-
     @Override
     public void hide() {
-        // Mantener música (no detener)
         Gdx.input.setInputProcessor(null);
         if (stage != null) { stage.clear(); stage.dispose(); stage = null; }
         if (skin  != null) { skin.dispose();  skin  = null; }
