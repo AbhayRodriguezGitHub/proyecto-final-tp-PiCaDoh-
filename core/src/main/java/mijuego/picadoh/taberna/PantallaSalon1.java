@@ -13,7 +13,6 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
-
 import mijuego.picadoh.Principal;
 
 public class PantallaSalon1 implements Screen {
@@ -59,11 +58,13 @@ public class PantallaSalon1 implements Screen {
 
         TextButton.TextButtonStyle estiloInvisible = new TextButton.TextButtonStyle();
         estiloInvisible.font = font;
-        estiloInvisible.up = null;  estiloInvisible.down = null;  estiloInvisible.over = null;
+        estiloInvisible.up = null;
+        estiloInvisible.down = null;
+        estiloInvisible.over = null;
         skin.add("invisible", estiloInvisible);
 
         TextButton btnVolverTaberna = new TextButton("", skin, "invisible");
-        btnVolverTaberna.setBounds(256, 311, 100, 98);
+        btnVolverTaberna.setBounds(256, 311, 356 - 256, 409 - 311);
         btnVolverTaberna.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaTaberna(juego));
@@ -72,118 +73,257 @@ public class PantallaSalon1 implements Screen {
         stage.addActor(btnVolverTaberna);
 
         TextButton btnIrSalon2 = new TextButton("", skin, "invisible");
-        btnIrSalon2.setBounds(1539, 317, 96, 89);
+        btnIrSalon2.setBounds(1539, 317, 1635 - 1539, 406 - 317);
         btnIrSalon2.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaSalon2(juego));
             }
         });
         stage.addActor(btnIrSalon2);
+
         TextButton btnS11 = new TextButton("", skin, "invisible");
-        btnS11.setBounds(234f, 697f, 147f, 161f);
+        btnS11.setBounds(234f, 697f, 381f - 234f, 858f - 697f);
         btnS11.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego, PantallaSalon1.this, "lwjgl3/assets/presentaciones/S11.png"
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S11.png"
                 ));
             }
-        });        stage.addActor(btnS11);
-
-
+        });
+        stage.addActor(btnS11);
 
         TextButton btnS12 = new TextButton("", skin, "invisible");
-        btnS12.setBounds(446f, 697f, 150f, 161f);
+        btnS12.setBounds(446f, 697f, 596f - 446f, 858f - 697f);
         btnS12.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego, PantallaSalon1.this, "lwjgl3/assets/presentaciones/S12.png"
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S12.png"
                 ));
             }
         });
         stage.addActor(btnS12);
 
         TextButton btnS13 = new TextButton("", skin, "invisible");
-        btnS13.setBounds(661f, 697f, 148f, 161f);
+        btnS13.setBounds(661f, 697f, 809f - 661f, 858f - 697f);
         btnS13.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego, PantallaSalon1.this, "lwjgl3/assets/presentaciones/S13.png"
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S13.png"
                 ));
             }
         });
         stage.addActor(btnS13);
 
         TextButton btnS14 = new TextButton("", skin, "invisible");
-        btnS14.setBounds(872f, 697f, 152f, 161f);
+        btnS14.setBounds(872f, 697f, 1024f - 872f, 858f - 697f);
         btnS14.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego, PantallaSalon1.this, "lwjgl3/assets/presentaciones/S14.png"
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S14.png"
                 ));
             }
         });
         stage.addActor(btnS14);
 
         TextButton btnS15 = new TextButton("", skin, "invisible");
-        btnS15.setBounds(1085f, 697f, 150f, 161f);
+        btnS15.setBounds(1085f, 697f, 1235f - 1085f, 858f - 697f);
         btnS15.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego, PantallaSalon1.this, "lwjgl3/assets/presentaciones/S15.png"
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S15.png"
                 ));
             }
         });
+        stage.addActor(btnS15);
+
+        TextButton btnS16 = new TextButton("", skin, "invisible");
+        btnS16.setBounds(1298f, 697f, 1446f - 1298f, 858f - 697f);
+        btnS16.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S16.png"
+                ));
+            }
+        });
+        stage.addActor(btnS16);
+
+        TextButton btnS17 = new TextButton("", skin, "invisible");
+        btnS17.setBounds(1511f, 697f, 1657f - 1511f, 858f - 697f);
+        btnS17.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S17.png"
+                ));
+            }
+        });
+        stage.addActor(btnS17);
+
+        TextButton btnS18 = new TextButton("", skin, "invisible");
+        btnS18.setBounds(234f, 486f, 381f - 234f, 648f - 486f);
+        btnS18.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S18.png"
+                ));
+            }
+        });
+        stage.addActor(btnS18);
+
+        TextButton btnS19 = new TextButton("", skin, "invisible");
+        btnS19.setBounds(446f, 486f, 596f - 446f, 648f - 486f);
+        btnS19.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S19.png"
+                ));
+            }
+        });
+        stage.addActor(btnS19);
+
+        TextButton btnS110 = new TextButton("", skin, "invisible");
+        btnS110.setBounds(661f, 486f, 809f - 661f, 648f - 486f);
+        btnS110.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S110.png"
+                ));
+            }
+        });
+        stage.addActor(btnS110);
+
+        TextButton btnS111 = new TextButton("", skin, "invisible");
+        btnS111.setBounds(872f, 486f, 1024f - 872f, 648f - 486f);
+        btnS111.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S111.png"
+                ));
+            }
+        });
+        stage.addActor(btnS111);
+
+        TextButton btnS112 = new TextButton("", skin, "invisible");
+        btnS112.setBounds(1085f, 486f, 1235f - 1085f, 648f - 486f);
+        btnS112.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S112.png"
+                ));
+            }
+        });
+        stage.addActor(btnS112);
+
+        TextButton btnS113 = new TextButton("", skin, "invisible");
+        btnS113.setBounds(1298f, 486f, 1446f - 1298f, 648f - 486f);
+        btnS113.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S113.png"
+                ));
+            }
+        });
+        stage.addActor(btnS113);
+
+        TextButton btnS114 = new TextButton("", skin, "invisible");
+        btnS114.setBounds(1511f, 486f, 1657f - 1511f, 648f - 486f);
+        btnS114.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S114.png"
+                ));
+            }
+        });
+        stage.addActor(btnS114);
+
         TextButton btnS115 = new TextButton("", skin, "invisible");
-        btnS115.setBounds(446f, 268f, 150f, 180f);
+        btnS115.setBounds(446f, 268f, 596f - 446f, 448f - 268f);
         btnS115.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego, PantallaSalon1.this,
-                    "lwjgl3/assets/presentaciones/S115.png"));
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S115.png"
+                ));
             }
         });
         stage.addActor(btnS115);
 
         TextButton btnS116 = new TextButton("", skin, "invisible");
-        btnS116.setBounds(661f, 268f, 148f, 180f);
+        btnS116.setBounds(661f, 268f, 809f - 661f, 448f - 268f);
         btnS116.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego, PantallaSalon1.this,
-                    "lwjgl3/assets/presentaciones/S116.png"));
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S116.png"
+                ));
             }
         });
         stage.addActor(btnS116);
 
         TextButton btnS117 = new TextButton("", skin, "invisible");
-        btnS117.setBounds(872f, 268f, 152f, 180f);
+        btnS117.setBounds(872f, 268f, 1024f - 872f, 448f - 268f);
         btnS117.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego, PantallaSalon1.this,
-                    "lwjgl3/assets/presentaciones/S117.png"));
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S117.png"
+                ));
             }
         });
         stage.addActor(btnS117);
 
         TextButton btnS118 = new TextButton("", skin, "invisible");
-        btnS118.setBounds(1085f, 268f, 150f, 180f);
+        btnS118.setBounds(1085f, 268f, 1235f - 1085f, 448f - 268f);
         btnS118.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego, PantallaSalon1.this,
-                    "lwjgl3/assets/presentaciones/S118.png"));
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S118.png"
+                ));
             }
         });
         stage.addActor(btnS118);
 
         TextButton btnS119 = new TextButton("", skin, "invisible");
-        btnS119.setBounds(1298f, 268f, 148f, 180f);
+        btnS119.setBounds(1298f, 268f, 1446f - 1298f, 448f - 268f);
         btnS119.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego, PantallaSalon1.this,
-                    "lwjgl3/assets/presentaciones/S119.png"));
+                    juego,
+                    PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S119.png"
+                ));
             }
         });
         stage.addActor(btnS119);
@@ -200,7 +340,11 @@ public class PantallaSalon1 implements Screen {
         stage.draw();
     }
 
-    @Override public void resize(int width, int height) { viewport.update(width, height, true); }
+    @Override
+    public void resize(int width, int height) {
+        viewport.update(width, height, true);
+    }
+
     @Override public void pause() {}
     @Override public void resume() {}
 
