@@ -79,7 +79,6 @@ public class PantallaSalon1 implements Screen {
             }
         });
         stage.addActor(btnIrSalon2);
-
         TextButton btnS11 = new TextButton("", skin, "invisible");
         btnS11.setBounds(234f, 697f, 147f, 161f);
         btnS11.addListener(new ClickListener() {
