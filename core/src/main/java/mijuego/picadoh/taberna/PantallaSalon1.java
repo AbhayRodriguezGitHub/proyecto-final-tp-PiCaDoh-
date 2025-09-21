@@ -59,7 +59,7 @@ public class PantallaSalon1 implements Screen {
 
         TextButton.TextButtonStyle estiloInvisible = new TextButton.TextButtonStyle();
         estiloInvisible.font = font;
-        estiloInvisible.up = null; estiloInvisible.down = null; estiloInvisible.over = null;
+        estiloInvisible.up = null;  estiloInvisible.down = null;  estiloInvisible.over = null;
         skin.add("invisible", estiloInvisible);
 
         TextButton btnVolverTaberna = new TextButton("", skin, "invisible");
@@ -85,22 +85,19 @@ public class PantallaSalon1 implements Screen {
         btnS11.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego,
-                    PantallaSalon1.this,
-                    "lwjgl3/assets/presentaciones/S11.png"
+                    juego, PantallaSalon1.this, "lwjgl3/assets/presentaciones/S11.png"
                 ));
             }
-        });
-        stage.addActor(btnS11);
+        });        stage.addActor(btnS11);
+
+
 
         TextButton btnS12 = new TextButton("", skin, "invisible");
         btnS12.setBounds(446f, 697f, 150f, 161f);
         btnS12.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego,
-                    PantallaSalon1.this,
-                    "lwjgl3/assets/presentaciones/S12.png"
+                    juego, PantallaSalon1.this, "lwjgl3/assets/presentaciones/S12.png"
                 ));
             }
         });
@@ -111,9 +108,7 @@ public class PantallaSalon1 implements Screen {
         btnS13.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego,
-                    PantallaSalon1.this,
-                    "lwjgl3/assets/presentaciones/S13.png"
+                    juego, PantallaSalon1.this, "lwjgl3/assets/presentaciones/S13.png"
                 ));
             }
         });
@@ -124,9 +119,7 @@ public class PantallaSalon1 implements Screen {
         btnS14.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego,
-                    PantallaSalon1.this,
-                    "lwjgl3/assets/presentaciones/S14.png"
+                    juego, PantallaSalon1.this, "lwjgl3/assets/presentaciones/S14.png"
                 ));
             }
         });
@@ -137,13 +130,64 @@ public class PantallaSalon1 implements Screen {
         btnS15.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaPresentacionCarta(
-                    juego,
-                    PantallaSalon1.this,
-                    "lwjgl3/assets/presentaciones/S15.png"
+                    juego, PantallaSalon1.this, "lwjgl3/assets/presentaciones/S15.png"
                 ));
             }
         });
-        stage.addActor(btnS15);
+        TextButton btnS115 = new TextButton("", skin, "invisible");
+        btnS115.setBounds(446f, 268f, 150f, 180f);
+        btnS115.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego, PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S115.png"));
+            }
+        });
+        stage.addActor(btnS115);
+
+        TextButton btnS116 = new TextButton("", skin, "invisible");
+        btnS116.setBounds(661f, 268f, 148f, 180f);
+        btnS116.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego, PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S116.png"));
+            }
+        });
+        stage.addActor(btnS116);
+
+        TextButton btnS117 = new TextButton("", skin, "invisible");
+        btnS117.setBounds(872f, 268f, 152f, 180f);
+        btnS117.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego, PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S117.png"));
+            }
+        });
+        stage.addActor(btnS117);
+
+        TextButton btnS118 = new TextButton("", skin, "invisible");
+        btnS118.setBounds(1085f, 268f, 150f, 180f);
+        btnS118.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego, PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S118.png"));
+            }
+        });
+        stage.addActor(btnS118);
+
+        TextButton btnS119 = new TextButton("", skin, "invisible");
+        btnS119.setBounds(1298f, 268f, 148f, 180f);
+        btnS119.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego, PantallaSalon1.this,
+                    "lwjgl3/assets/presentaciones/S119.png"));
+            }
+        });
+        stage.addActor(btnS119);
     }
 
     @Override
@@ -160,6 +204,7 @@ public class PantallaSalon1 implements Screen {
     @Override public void resize(int width, int height) { viewport.update(width, height, true); }
     @Override public void pause() {}
     @Override public void resume() {}
+
     @Override
     public void hide() {
         Gdx.input.setInputProcessor(null);
