@@ -32,9 +32,9 @@ public class PantallaTaberna implements Screen {
     private Viewport viewport;
 
 
-    private static Music[] pistas;              // se crean una sola vez
-    private static int indicePistaActual = 0;   // índice actual
-    private static Music musicaActual;          // pista actualmente sonando
+    private static Music[] pistas;
+    private static int indicePistaActual = 0;
+    private static Music musicaActual;
 
     private boolean mantenerMusicaAlSalir = false;
 
@@ -44,7 +44,6 @@ public class PantallaTaberna implements Screen {
 
     @Override
     public void show() {
-        // Cámara + Viewport (mantiene relación de aspecto y agrega barras si hace falta)
         camara = new OrthographicCamera();
         viewport = new FitViewport(VW, VH, camara);
         viewport.apply(true);
@@ -53,8 +52,6 @@ public class PantallaTaberna implements Screen {
 
         stage = new Stage(viewport);
         Gdx.input.setInputProcessor(stage);
-
-        juego.detenerMusicaActual();
 
         if (juego.isCursorPersonalizadoUsado()) {
             juego.setCursorPersonalizado();
@@ -87,7 +84,6 @@ public class PantallaTaberna implements Screen {
         estiloInvisible.over = null;
         skin.add("default", estiloInvisible);
 
-        // Botón atrás
         TextButton btnAtras = new TextButton("", skin);
         btnAtras.setBounds(26, 940, 150 - 26, 1064 - 940);
         btnAtras.addListener(new ClickListener() {
@@ -112,11 +108,39 @@ public class PantallaTaberna implements Screen {
         btnSalon1.setBounds(1410, 117, 1548 - 1410, 255 - 117);
         btnSalon1.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
-                mantenerMusicaAlSalir = true;          // dejamos sonando la radio
+                mantenerMusicaAlSalir = true;
                 juego.setScreen(new PantallaSalon1(juego));
             }
         });
         stage.addActor(btnSalon1);
+
+        TextButton btnNON = new TextButton("", skin);
+        btnNON.setBounds(379, 115, 514 - 379, 527 - 115);
+        btnNON.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                mantenerMusicaAlSalir = true;
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaTaberna.this,
+                    "lwjgl3/assets/menus/NON.png"
+                ));
+            }
+        });
+        stage.addActor(btnNON);
+
+        TextButton btnL1 = new TextButton("", skin);
+        btnL1.setBounds(890, 115, 1030 - 890, 255 - 115);
+        btnL1.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                mantenerMusicaAlSalir = true;
+                juego.setScreen(new PantallaPresentacionCarta(
+                    juego,
+                    PantallaTaberna.this,
+                    "lwjgl3/assets/libro/L1.png"
+                ));
+            }
+        });
+        stage.addActor(btnL1);
     }
 
     private void reproducirPista(int indice) {
@@ -162,7 +186,6 @@ public class PantallaTaberna implements Screen {
 
     @Override
     public void hide() {
-        // Si vamos a los Salones, la música sigue. Si vamos al menú, ya la detuvimos en el botón.
         if (!mantenerMusicaAlSalir) detenerMusicaTaberna();
         mantenerMusicaAlSalir = false;
 
@@ -178,6 +201,5 @@ public class PantallaTaberna implements Screen {
         if (stage != null) stage.dispose();
         if (skin  != null) skin.dispose();
         if (fondo != null) fondo.dispose();
-        // No liberamos las pistas: persisten mientras dure el proceso.
     }
 }
