@@ -6,7 +6,7 @@ import mijuego.picadoh.Principal;
 
 /**
  * Clase de lanzamiento para escritorio (usando LWJGL3).
- * Esta clase configura la ventana y lanza el juego principal.
+ * Esta clase configura la ventana y lanza el juego principal
  */
 public class Lwjgl3Launcher {
 
