@@ -133,11 +133,7 @@ public class PantallaTaberna implements Screen {
         btnL1.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 mantenerMusicaAlSalir = true;
-                juego.setScreen(new PantallaPresentacionCarta(
-                    juego,
-                    PantallaTaberna.this,
-                    "lwjgl3/assets/libro/L1.png"
-                ));
+                juego.setScreen(new PantallaLibroPagina(juego, PantallaTaberna.this, 1));
             }
         });
         stage.addActor(btnL1);
