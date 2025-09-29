@@ -8,6 +8,7 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import mijuego.picadoh.Principal;
 import mijuego.picadoh.PantallaMenu;
+import mijuego.picadoh.taberna.PantallaTaberna;
 
 public class PantallaEmpate implements Screen {
 
@@ -15,43 +16,48 @@ public class PantallaEmpate implements Screen {
     private SpriteBatch batch;
     private Texture imagenEmpate;
 
-    // Coordenadas botón invisible (rectángulo)
-    // X: 85 a 831  |  Y: 715 a 872
     private static final int BOTON_X1 = 85;
     private static final int BOTON_X2 = 831;
     private static final int BOTON_Y1 = 715;
     private static final int BOTON_Y2 = 872;
+
+    private static final int BOTON_TABERNA_X1 = 1058;
+    private static final int BOTON_TABERNA_X2 = 1814;
+    private static final int BOTON_TABERNA_Y1 = 716;
+    private static final int BOTON_TABERNA_Y2 = 873;
 
     public PantallaEmpate(Principal juego) {
         this.juego = juego;
         batch = new SpriteBatch();
         imagenEmpate = new Texture(Gdx.files.internal("lwjgl3/assets/condicion/EMPATE.png"));
 
-        // Reproduce EMPATE.mp3
         juego.reproducirMusicaEmpate();
 
-        // Input para botón invisible
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-                // Invertimos Y (en render 0 está abajo)
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
 
                 if (screenX >= BOTON_X1 && screenX <= BOTON_X2 &&
                     yInvertida >= BOTON_Y1 && yInvertida <= BOTON_Y2) {
-                    // Click dentro del rectángulo invisible -> volver al menú
                     juego.setScreen(new PantallaMenu(juego));
                     return true;
                 }
+
+                if (screenX >= BOTON_TABERNA_X1 && screenX <= BOTON_TABERNA_X2 &&
+                    yInvertida >= BOTON_TABERNA_Y1 && yInvertida <= BOTON_TABERNA_Y2) {
+                    juego.detenerMusicaActual();
+                    juego.setScreen(new PantallaTaberna(juego));
+                    return true;
+                }
+
                 return false;
             }
         });
     }
 
     @Override
-    public void show() {
-        // No es necesario por ahora
-    }
+    public void show() {}
 
     @Override
     public void render(float delta) {

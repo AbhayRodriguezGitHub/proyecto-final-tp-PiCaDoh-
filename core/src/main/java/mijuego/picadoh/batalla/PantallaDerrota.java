@@ -8,6 +8,7 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import mijuego.picadoh.Principal;
 import mijuego.picadoh.PantallaMenu;
+import mijuego.picadoh.taberna.PantallaTaberna;
 
 public class PantallaDerrota implements Screen {
 
@@ -15,7 +16,6 @@ public class PantallaDerrota implements Screen {
     private SpriteBatch batch;
     private Texture imagenDerrota;
 
-    // Coordenadas botón invisible
     private final int botonX1 = 1010;
     private final int botonX2 = 1853;
     private final int botonY1 = 568;
@@ -25,28 +25,31 @@ public class PantallaDerrota implements Screen {
         this.juego = juego;
         batch = new SpriteBatch();
         imagenDerrota = new Texture(Gdx.files.internal("lwjgl3/assets/condicion/DERROTA.png"));
-        juego.reproducirMusicaDerrota(); // Música en loop
+        juego.reproducirMusicaDerrota();
 
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-                // Invertimos Y para que coincida con el sistema gráfico
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
 
                 if (screenX >= botonX1 && screenX <= botonX2 && yInvertida >= botonY1 && yInvertida <= botonY2) {
-                    // Click dentro del botón invisible
                     juego.setScreen(new PantallaMenu(juego));
                     return true;
                 }
+
+                if (screenX >= 1017 && screenX <= 1861 && yInvertida >= 309 && yInvertida <= 484) {
+                    juego.detenerMusicaActual();
+                    juego.setScreen(new PantallaTaberna(juego));
+                    return true;
+                }
+
                 return false;
             }
         });
     }
 
     @Override
-    public void show() {
-        // No se necesita por ahora
-    }
+    public void show() {}
 
     @Override
     public void render(float delta) {
@@ -59,24 +62,16 @@ public class PantallaDerrota implements Screen {
     }
 
     @Override
-    public void resize(int width, int height) {
-        // No se necesita por ahora
-    }
+    public void resize(int width, int height) {}
 
     @Override
-    public void pause() {
-        // No se necesita por ahora
-    }
+    public void pause() {}
 
     @Override
-    public void resume() {
-        // No se necesita por ahora
-    }
+    public void resume() {}
 
     @Override
-    public void hide() {
-        // No se necesita por ahora
-    }
+    public void hide() {}
 
     @Override
     public void dispose() {

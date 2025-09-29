@@ -8,6 +8,7 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import mijuego.picadoh.Principal;
 import mijuego.picadoh.PantallaMenu;
+import mijuego.picadoh.taberna.PantallaTaberna;
 
 public class PantallaVictoria implements Screen {
 
@@ -15,7 +16,6 @@ public class PantallaVictoria implements Screen {
     private SpriteBatch batch;
     private Texture imagenVictoria;
 
-    // Coordenadas botón invisible
     private final int botonX1 = 938;
     private final int botonX2 = 1718;
     private final int botonY1 = 542;
@@ -25,28 +25,31 @@ public class PantallaVictoria implements Screen {
         this.juego = juego;
         batch = new SpriteBatch();
         imagenVictoria = new Texture(Gdx.files.internal("lwjgl3/assets/condicion/VICTORIA.png"));
-        juego.reproducirMusicaVictoria(); // Música en loop (configurada en Principal)
+        juego.reproducirMusicaVictoria();
 
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-                // Las coordenadas Y de input van invertidas (0 abajo, pantalla arriba)
                 int yInvertida = Gdx.graphics.getHeight() - screenY;
 
                 if (screenX >= botonX1 && screenX <= botonX2 && yInvertida >= botonY1 && yInvertida <= botonY2) {
-                    // Clic dentro del botón invisible
                     juego.setScreen(new PantallaMenu(juego));
                     return true;
                 }
+
+                if (screenX >= 942 && screenX <= 1788 && yInvertida >= 284 && yInvertida <= 460) {
+                    juego.detenerMusicaActual();
+                    juego.setScreen(new PantallaTaberna(juego));
+                    return true;
+                }
+
                 return false;
             }
         });
     }
 
     @Override
-    public void show() {
-        // No necesario
-    }
+    public void show() {}
 
     @Override
     public void render(float delta) {
@@ -59,24 +62,16 @@ public class PantallaVictoria implements Screen {
     }
 
     @Override
-    public void resize(int width, int height) {
-        // No necesario
-    }
+    public void resize(int width, int height) {}
 
     @Override
-    public void pause() {
-        // No necesario
-    }
+    public void pause() {}
 
     @Override
-    public void resume() {
-        // No necesario
-    }
+    public void resume() {}
 
     @Override
-    public void hide() {
-        // No necesario
-    }
+    public void hide() {}
 
     @Override
     public void dispose() {
