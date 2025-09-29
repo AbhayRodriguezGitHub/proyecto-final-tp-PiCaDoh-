@@ -4,6 +4,8 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.Input;
+import com.badlogic.gdx.InputAdapter;
+import com.badlogic.gdx.InputMultiplexer;
 import com.badlogic.gdx.graphics.Cursor;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
@@ -50,7 +52,6 @@ public class PantallaTaberna implements Screen {
         camara.update();
 
         stage = new Stage(viewport);
-        Gdx.input.setInputProcessor(stage);
 
         if (juego.isCursorPersonalizadoUsado()) {
             juego.setCursorPersonalizado();
@@ -147,6 +148,27 @@ public class PantallaTaberna implements Screen {
             }
         });
         stage.addActor(btnCreditos);
+
+        InputMultiplexer multiplexer = new InputMultiplexer();
+        multiplexer.addProcessor(stage);
+        multiplexer.addProcessor(new InputAdapter() {
+            @Override
+            public boolean keyDown(int keycode) {
+                boolean ctrl = Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT) || Gdx.input.isKeyPressed(Input.Keys.CONTROL_RIGHT);
+                if (ctrl && keycode == Input.Keys.P) {
+                    pauseMusicaActual();
+                    System.out.println("[TABERNA] Ctrl+P -> pausa música");
+                    return true;
+                }
+                if (ctrl && keycode == Input.Keys.T) {
+                    resumeMusicaActual();
+                    System.out.println("[TABERNA] Ctrl+T -> reanuda música");
+                    return true;
+                }
+                return false;
+            }
+        });
+        Gdx.input.setInputProcessor(multiplexer);
     }
 
     private void reproducirPista(int indice) {
