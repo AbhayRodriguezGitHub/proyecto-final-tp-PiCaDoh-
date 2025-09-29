@@ -3,6 +3,7 @@ package mijuego.picadoh.taberna;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.audio.Music;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.Cursor;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
@@ -14,7 +15,6 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
-
 import mijuego.picadoh.Principal;
 import mijuego.picadoh.PantallaMenu;
 
@@ -30,7 +30,6 @@ public class PantallaTaberna implements Screen {
 
     private OrthographicCamera camara;
     private Viewport viewport;
-
 
     private static Music[] pistas;
     private static int indicePistaActual = 0;
@@ -137,6 +136,17 @@ public class PantallaTaberna implements Screen {
             }
         });
         stage.addActor(btnL1);
+
+        TextButton btnCreditos = new TextButton("", skin);
+        btnCreditos.setBounds(1678, 816, 1872 - 1678, 1025 - 816);
+        btnCreditos.addListener(new ClickListener() {
+            @Override public void clicked(InputEvent event, float x, float y) {
+                mantenerMusicaAlSalir = true;
+                PantallaTaberna.pauseMusicaActual();
+                juego.setScreen(new PantallaVideoCredits(juego, PantallaTaberna.this, "lwjgl3/assets/final/CREDITOS.mp4", true));
+            }
+        });
+        stage.addActor(btnCreditos);
     }
 
     private void reproducirPista(int indice) {
@@ -157,6 +167,20 @@ public class PantallaTaberna implements Screen {
     private void detenerMusicaTaberna() {
         if (musicaActual != null && musicaActual.isPlaying()) {
             musicaActual.stop();
+        }
+    }
+
+    public static void pauseMusicaActual() {
+        if (musicaActual != null && musicaActual.isPlaying()) {
+            musicaActual.pause();
+        }
+    }
+
+    public static void resumeMusicaActual() {
+        if (musicaActual != null) {
+            try {
+                if (!musicaActual.isPlaying()) musicaActual.play();
+            } catch (Exception ignored) {}
         }
     }
 
