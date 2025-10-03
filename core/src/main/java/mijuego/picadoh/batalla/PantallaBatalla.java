@@ -58,6 +58,7 @@ public class PantallaBatalla implements Screen {
     private final List<CartaEfecto> mazoEfectosRestantes;
 
     private CartaTropa cartaSeleccionada;
+    private int cartaSeleccionadaIndex = -1; // <-- índice en la mano de la carta seleccionada
     private int cartaHoverIndex = -1;
 
     private float cartaDragX = 0;
@@ -225,12 +226,14 @@ public class PantallaBatalla implements Screen {
         genNiv.dispose();
 
         ranuras = new ArrayList<>();
+        // Las primeras 5 son del jugador (esEnemigo = false)
         ranuras.add(new Ranura(36, 254, 267, 180, false));
         ranuras.add(new Ranura(437, 254, 267, 180, false));
         ranuras.add(new Ranura(833, 254, 267, 180, false));
         ranuras.add(new Ranura(1229, 254, 267, 180, false));
         ranuras.add(new Ranura(1615, 254, 270, 180, false));
 
+        // Las siguientes 5 son del enemigo (esEnemigo = true)
         ranuras.add(new Ranura(22, 645, 283, 183, true));
         ranuras.add(new Ranura(412, 645, 286, 183, true));
         ranuras.add(new Ranura(813, 645, 286, 183, true));
@@ -322,11 +325,13 @@ public class PantallaBatalla implements Screen {
                     }
                 }
 
+                // Selección de tropa: guardamos índice para poder eliminar al invocar
                 for (int i = 0; i < manoTropas.size(); i++) {
                     float x = TROPAS_X_INICIO + i * (ANCHO_CARTA + ESPACIO_CARTAS);
                     if (wx >= x && wx <= x + ANCHO_CARTA &&
                         wy >= Y_CARTA_MANO && wy <= Y_CARTA_MANO + ALTURA_CARTA + 30) {
                         cartaSeleccionada = manoTropas.get(i);
+                        cartaSeleccionadaIndex = i; // <-- guardamos índice
                         cartaDragX = wx - ANCHO_CARTA / 2f;
                         cartaDragY = wy - ALTURA_CARTA / 2f;
                         arrastrando = true;
@@ -349,9 +354,11 @@ public class PantallaBatalla implements Screen {
                     cartaDragY = wy - ALTURA_CARTA / 2f;
 
                     ranuraHover = null;
-                    for (Ranura ranura : ranuras) {
-                        if (ranura.contiene((int) wx, (int) wy) && (ranura.getCarta() == null)) {
-                            ranuraHover = ranura;
+                    // Buscar ranura válida SOLO entre las ranuras del JUGADOR (primeras 5)
+                    for (int idx = 0; idx < 5; idx++) {
+                        Ranura r = ranuras.get(idx);
+                        if (r.contiene((int) wx, (int) wy) && (r.getCarta() == null) && !r.esEnemigo()) {
+                            ranuraHover = r;
                             break;
                         }
                     }
@@ -377,8 +384,11 @@ public class PantallaBatalla implements Screen {
                 float wy = tmpUnproject.y;
 
                 if (arrastrando && cartaSeleccionada != null) {
-                    for (Ranura ranura : ranuras) {
-                        if (ranura.contiene((int) wx, (int) wy) && ranura.getCarta() == null) {
+                    boolean invocado = false;
+                    // Intentamos invocar SOLO en las ranuras del JUGADOR (índices 0..4)
+                    for (int idx = 0; idx < 5; idx++) {
+                        Ranura ranura = ranuras.get(idx);
+                        if (ranura.contiene((int) wx, (int) wy) && ranura.getCarta() == null && !ranura.esEnemigo()) {
 
                             if (!contexto.isInvocacionesIlimitadasEsteTurno()
                                 && invocacionesTropaEsteTurno >= MAX_INVOC_TROPAS_TURNO) {
@@ -387,12 +397,26 @@ public class PantallaBatalla implements Screen {
                             }
 
                             if (puedeInvocarPorNivel(cartaSeleccionada)) {
+                                // Asigna la carta a la ranura del jugador
                                 ranura.setCarta(cartaSeleccionada);
-                                if (!cartaSeleccionada.invocar()) {
+
+                                // --- Eliminar la carta de la mano (USO ÚNICO) ---
+                                if (cartaSeleccionadaIndex >= 0 && cartaSeleccionadaIndex < manoTropas.size()) {
+                                    // si el objeto coincide, eliminar por índice
+                                    if (manoTropas.get(cartaSeleccionadaIndex) == cartaSeleccionada) {
+                                        manoTropas.remove(cartaSeleccionadaIndex);
+                                    } else {
+                                        // fallback: eliminar la instancia encontrada
+                                        manoTropas.remove(cartaSeleccionada);
+                                    }
+                                } else {
+                                    // fallback: eliminar por objeto si existe
                                     manoTropas.remove(cartaSeleccionada);
                                 }
+
                                 invocacionesTropaEsteTurno++;
                                 System.out.println("[INVOCACIÓN] Tropas invocadas este turno: " + invocacionesTropaEsteTurno + "/" + MAX_INVOC_TROPAS_TURNO);
+                                invocado = true;
                             } else {
                                 System.out.println("[INVOCACIÓN BLOQUEADA] No puedes invocar carta de nivel "
                                     + cartaSeleccionada.getNivel() + " en el turno " + turnoActual);
@@ -400,7 +424,10 @@ public class PantallaBatalla implements Screen {
                             break;
                         }
                     }
+
+                    // reset selección siempre
                     cartaSeleccionada = null;
+                    cartaSeleccionadaIndex = -1;
                     arrastrando = false;
                     ranuraHover = null;
                 }
