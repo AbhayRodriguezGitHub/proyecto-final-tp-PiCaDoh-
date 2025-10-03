@@ -40,6 +40,10 @@ public class Principal extends Game {
     @Override
     public void create() {
         batch = new SpriteBatch();
+
+        // NOTA: El icono de la ventana se configura desde Lwjgl3Launcher (Lwjgl3ApplicationConfiguration).
+        // No se usa Gdx.graphics.setIcon(...) con LWJGL3; quitar la llamada para evitar errores.
+
         aplicarCursor();
         setupVisorDeCoordenadas();
         cargarMusica();
