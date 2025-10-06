@@ -315,6 +315,18 @@ Comportamiento actual (Producción): Toda carta invocada en una ranura se remuev
 ## 0.052
 Agregadas todas ACTUALIZACIONES del CHANGELOG de la version 0.11 a 0.52 INCLUSIVE.
 
+## --- Apartir de las Proximas Versiones, Todas estan en "0.1XX" , "1" Es por que ya se Empieza con la RED. Despues sigue el numero de versionado normal. ---
+
+## 0.153 
+
+Comienzos de RED LAN - Fases de Eleccion
+Ahora al ejecurar el LWJGL3 Launcher lo toma como un SOCKET, CLIENTE1 (Esta Permitido ejecutar varias instancias) Lo Ejecutas Otra vez, CLIENTE 2.
+Los dos se conectan mediante ServidorLAN.java
+Al tocar batalla pasas a la Seleccion de Tropa, una vez elegidas las 15, pasas ala seleccion de Efecto, una vez elegido los 7, Aparece el Mensaje: "Esperando Rival..." una vez CLIENTE 2 elija todo lo suyo, Se pasan los 2 a PantallaBatalla.
+(PantallaBatalla Todavia no esta en RED)
+
+
+
 
 
 
