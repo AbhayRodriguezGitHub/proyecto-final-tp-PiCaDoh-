@@ -12,6 +12,9 @@ dependencies {
   api "com.badlogicgames.gdx:gdx-freetype:$gdxVersion"
   api "com.badlogicgames.gdx:gdx:$gdxVersion"
 
+  // Gson para serializar/deserializar JSON en ClienteLAN/ServidorLAN
+  implementation "com.google.code.gson:gson:2.10.1"
+
   if(enableGraalNative == 'true') {
     implementation "io.github.berstanio:gdx-svmhelper-annotations:$graalHelperVersion"
   }

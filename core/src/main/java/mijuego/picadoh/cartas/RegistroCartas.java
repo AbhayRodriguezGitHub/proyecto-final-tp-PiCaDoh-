@@ -3,10 +3,14 @@ package mijuego.picadoh.cartas;
 import java.util.*;
 import java.lang.reflect.Constructor;
 
+/**
+ * Registro/fábrica central de cartas de tropa.
+ * Añade utilidades para trabajar con nombres de clase (FQCN) útiles para red/LAN.
+ */
 public final class RegistroCartas {
     private RegistroCartas() {}
-    private static final List<Class<? extends CartaTropa>> TROPAS = List.of(
 
+    private static final List<Class<? extends CartaTropa>> TROPAS = List.of(
         Guardiancito.class,
         Barbot.class,
         MafiosaRosa.class,
@@ -87,16 +91,19 @@ public final class RegistroCartas {
         Vergal.class,
         Ñensei.class,
         Jansinski.class
-
-
-
-
     );
 
+    /**
+     * Devuelve la lista de clases disponibles (referencias Class).
+     */
     public static List<Class<? extends CartaTropa>> tropasDisponibles() {
         return TROPAS;
     }
 
+    /**
+     * Crea una instancia de CartaTropa usando la Class provista.
+     * Lanza RuntimeException si falla (igual que antes).
+     */
     public static CartaTropa crear(Class<? extends CartaTropa> clazz) {
         try {
             Constructor<? extends CartaTropa> ctor = clazz.getDeclaredConstructor();
@@ -107,14 +114,20 @@ public final class RegistroCartas {
         }
     }
 
+    /**
+     * Intenta crear una tropa a partir de su nombre simple (sin paquete) o por su nombre
+     * (retorna Optional.empty() si no existe/ocurre error).
+     */
     public static Optional<CartaTropa> crearPorNombre(String nombre) {
         for (Class<? extends CartaTropa> c : TROPAS) {
             if (c.getSimpleName().equalsIgnoreCase(nombre)) {
-                return Optional.of(crear(c));
+                try {
+                    return Optional.of(crear(c));
+                } catch (RuntimeException ignored) {}
             }
             try {
                 CartaTropa tmp = crear(c);
-                if (tmp.getNombre().equalsIgnoreCase(nombre)) {
+                if (tmp != null && tmp.getNombre().equalsIgnoreCase(nombre)) {
                     return Optional.of(tmp);
                 }
             } catch (RuntimeException ignored) {}
@@ -122,6 +135,61 @@ public final class RegistroCartas {
         return Optional.empty();
     }
 
+    /**
+     * Crea una instancia a partir del nombre de clase totalmente cualificado (FQCN).
+     * Devuelve Optional.empty() si la clase no se encuentra o no puede instanciarse.
+     *
+     * Útil cuando recibís por red una lista de class names (ej. "mijuego.picadoh.cartas.Gardiancito").
+     */
+    public static Optional<CartaTropa> crearPorClassName(String fqcn) {
+        if (fqcn == null || fqcn.isBlank()) return Optional.empty();
+        try {
+            Class<?> cls = Class.forName(fqcn);
+            if (!CartaTropa.class.isAssignableFrom(cls)) {
+                System.out.println("[RegistroCartas] La clase " + fqcn + " no es CartaTropa.");
+                return Optional.empty();
+            }
+            @SuppressWarnings("unchecked")
+            Class<? extends CartaTropa> ct = (Class<? extends CartaTropa>) cls;
+            // Si la clase está en el registro TROPAS, usamos crear(ct) para consistencia; si no, intentamos reflexionar.
+            if (TROPAS.contains(ct)) {
+                return Optional.of(crear(ct));
+            } else {
+                // intentar crear por reflexión directa
+                Constructor<? extends CartaTropa> ctor = ct.getDeclaredConstructor();
+                ctor.setAccessible(true);
+                return Optional.of(ctor.newInstance());
+            }
+        } catch (ClassNotFoundException cnf) {
+            System.out.println("[RegistroCartas] Clase no encontrada: " + fqcn);
+        } catch (Exception ex) {
+            System.out.println("[RegistroCartas] Error instanciando por FQCN " + fqcn + " -> " + ex.getMessage());
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Devuelve una lista de nombres de clase totalmente cualificados (FQCN) de todas las tropas registradas.
+     * Útil para enviarlo por red o debug.
+     */
+    public static List<String> availableClassNames() {
+        List<String> out = new ArrayList<>(TROPAS.size());
+        for (Class<? extends CartaTropa> c : TROPAS) out.add(c.getName());
+        return out;
+    }
+
+    /**
+     * Devuelve el nombre de clase totalmente cualificado (FQCN) de la instancia dada,
+     * o null si la instancia es null.
+     */
+    public static String getClassName(CartaTropa carta) {
+        if (carta == null) return null;
+        return carta.getClass().getName();
+    }
+
+    /**
+     * Selecciona n cartas aleatorias (instancias) usando Random provisto.
+     */
     public static List<CartaTropa> aleatorias(int n, Random rnd) {
         List<Class<? extends CartaTropa>> copia = new ArrayList<>(TROPAS);
         Collections.shuffle(copia, rnd);

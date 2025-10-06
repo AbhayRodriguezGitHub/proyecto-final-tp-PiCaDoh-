@@ -13,9 +13,13 @@ import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
+import com.google.gson.JsonObject;
+import mijuego.picadoh.cartas.RegistroCartas;
 
 public class Principal extends Game {
     public SpriteBatch batch;
+    // clienteLAN por defecto apuntando a local; podés cambiar host/port si querés.
+    public final mijuego.red.ClienteLAN clienteLAN = new mijuego.red.ClienteLAN("127.0.0.1", 5000);
 
     private Stage coordenadasStage;
     private Label coordenadasLabel;
@@ -41,9 +45,6 @@ public class Principal extends Game {
     public void create() {
         batch = new SpriteBatch();
 
-        // NOTA: El icono de la ventana se configura desde Lwjgl3Launcher (Lwjgl3ApplicationConfiguration).
-        // No se usa Gdx.graphics.setIcon(...) con LWJGL3; quitar la llamada para evitar errores.
-
         aplicarCursor();
         setupVisorDeCoordenadas();
         cargarMusica();
@@ -51,9 +52,27 @@ public class Principal extends Game {
         cargarMusicaBatalla();
         cargarMusicaCondicion(); // Carga música de victoria/derrota/empate
         reproducirMusica(); // Menú por defecto
+
+        // ----- Conexión LAN -----
+        try {
+            boolean ok = clienteLAN.connect();
+            if (ok) {
+                System.out.println("[LAN] Cliente conectado a " + "127.0.0.1:5000");
+                // Listener global: imprimir todo lo que llegue (útil para debug)
+                clienteLAN.setOnMessage(json -> {
+                    // Este se ejecuta en el hilo del reader; imprimir está bien.
+                    System.out.println("[LAN-RECV] " + json.toString());
+                });
+            } else {
+                System.out.println("[LAN] No se pudo conectar al servidor (clienteLAN.connect() devolvió false).");
+            }
+        } catch (Throwable t) {
+            System.out.println("[LAN] Error al iniciar cliente LAN: " + t.getMessage());
+        }
+        // -------------------------
+
         setScreen(new PantallaIntro(this));
     }
-
 
     private void cargarMusica() {
         musicaMenu = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/menus/musica_menu.mp3"));
@@ -86,7 +105,6 @@ public class Principal extends Game {
         }
     }
 
-
     private void cargarMusicaSeleccion() {
         musicaSeleccion = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/menus/musica_seleccion.mp3"));
         musicaSeleccion.setLooping(true);
@@ -115,7 +133,6 @@ public class Principal extends Game {
         }
     }
 
-
     private void cargarMusicaBatalla() {
         musicaBatalla1 = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/campos/MUSICABATALLA1.mp3"));
         musicaBatalla2 = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/campos/MUSICABATALLA2.mp3"));
@@ -140,7 +157,6 @@ public class Principal extends Game {
         });
     }
 
-
     private void cargarMusicaCondicion() {
         musicaVictoria = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/condicion/VICTORIA.mp3"));
         musicaVictoria.setLooping(true);
@@ -155,7 +171,6 @@ public class Principal extends Game {
         musicaEmpate.setLooping(true);
         musicaEmpate.setVolume(volumenMusica);
     }
-
 
     public void reproducirMusicaVictoria() {
         detenerMusicaActual();
@@ -175,7 +190,6 @@ public class Principal extends Game {
         }
     }
 
-    // NUEVO: reproducir música de EMPATE
     public void reproducirMusicaEmpate() {
         detenerMusicaActual();
         if (musicaEmpate != null) {
@@ -206,7 +220,7 @@ public class Principal extends Game {
         if (musicaBatalla2 != null) musicaBatalla2.setVolume(volumenMusica);
         if (musicaVictoria != null) musicaVictoria.setVolume(volumenMusica);
         if (musicaDerrota != null) musicaDerrota.setVolume(volumenMusica);
-        if (musicaEmpate != null) musicaEmpate.setVolume(volumenMusica); // NUEVO
+        if (musicaEmpate != null) musicaEmpate.setVolume(volumenMusica);
     }
 
     // ───────────────────────────────
@@ -290,14 +304,18 @@ public class Principal extends Game {
     @Override
     public void dispose() {
         batch.dispose();
-        coordenadasStage.dispose();
+        if (coordenadasStage != null) coordenadasStage.dispose();
         if (musicaMenu != null) musicaMenu.dispose();
         if (musicaSeleccion != null) musicaSeleccion.dispose();
         if (musicaBatalla1 != null) musicaBatalla1.dispose();
         if (musicaBatalla2 != null) musicaBatalla2.dispose();
         if (musicaVictoria != null) musicaVictoria.dispose();
         if (musicaDerrota != null) musicaDerrota.dispose();
-        if (musicaEmpate != null) musicaEmpate.dispose(); // NUEVO
+        if (musicaEmpate != null) musicaEmpate.dispose();
+        // cerrar cliente LAN si está abierto
+        try {
+            if (clienteLAN != null) clienteLAN.close();
+        } catch (Throwable ignored) {}
         super.dispose();
     }
 

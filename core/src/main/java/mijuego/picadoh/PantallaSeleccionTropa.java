@@ -13,6 +13,14 @@ import mijuego.picadoh.cartas.*;
 
 import java.util.*;
 
+/**
+ * Pantalla de selección de tropas.
+ * - Opción B (no bloqueante): al completar las 15 tropas se envía la lista al servidor si está conectado,
+ *   y se avanza localmente a la pantalla de selección de efectos.
+ *
+ * Nota: El manejo de mensajes entrantes (MATCHED, START, etc.) debe implementarse en Principal
+ *       (clienteLAN.setOnMessage(...)) para no sobrescribir listeners desde varias pantallas.
+ */
 public class PantallaSeleccionTropa implements Screen {
     private final Principal juego;
     private Texture fondo;
@@ -67,7 +75,6 @@ public class PantallaSeleccionTropa implements Screen {
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
                 if (esperandoTransicion) return true;
 
-
                 tmp.set(screenX, screenY);
                 viewport.unproject(tmp);
 
@@ -94,6 +101,7 @@ public class PantallaSeleccionTropa implements Screen {
     private void avanzarSeleccion() {
         if (cartaSeleccionada != null) cartasElegidas.add(cartaSeleccionada);
 
+        // Liberar la carta no elegida (si existe)
         if (cartaSeleccionada == carta1 && carta2 != null) carta2.dispose();
         if (cartaSeleccionada == carta2 && carta1 != null) carta1.dispose();
 
@@ -102,6 +110,25 @@ public class PantallaSeleccionTropa implements Screen {
         cartaSeleccionada = null;
 
         if (cartasElegidas.size() >= 15) {
+            // --- Opción B: enviamos tropas al servidor y seguimos localmente con la pantalla de efectos ---
+            if (juego != null && juego.clienteLAN != null) {
+                try {
+                    List<String> claseNames = new ArrayList<>();
+                    for (CartaTropa c : cartasElegidas) {
+                        if (c != null) claseNames.add(c.getClass().getName());
+                    }
+                    System.out.println("[CLIENTE-LAN] Enviando tropas elegidas al servidor (no bloqueante)...");
+                    juego.clienteLAN.sendTroopReady(claseNames);
+                    // Nota: no esperamos respuesta aquí; el servidor usará la info cuando ambos clientes envíen tropas/efectos.
+                } catch (Exception ex) {
+                    System.out.println("[CLIENTE-LAN] Error al enviar tropas al servidor: " + ex.getMessage());
+                    // seguimos localmente aunque falle el envío
+                }
+            } else {
+                System.out.println("[OFFLINE] No hay clienteLAN: no se enviarán tropas (modo offline).");
+            }
+
+            // Avanzamos localmente a la pantalla de selección de efectos
             juego.setScreen(new PantallaSeleccionEfecto(juego, cartasElegidas));
             dispose();
         } else {
@@ -111,6 +138,12 @@ public class PantallaSeleccionTropa implements Screen {
 
     private void generarNuevoParDeCartas() {
         try {
+            // seguridad: si no hay clases disponibles, no intentar
+            if (clasesDisponibles == null || clasesDisponibles.size() < 2) {
+                carta1 = null;
+                carta2 = null;
+                return;
+            }
             List<Class<? extends CartaTropa>> copia = new ArrayList<>(clasesDisponibles);
             Collections.shuffle(copia);
             Class<? extends CartaTropa> clase1 = copia.get(0);
@@ -165,5 +198,6 @@ public class PantallaSeleccionTropa implements Screen {
         if (fondo != null) fondo.dispose();
         if (carta1 != null) carta1.dispose();
         if (carta2 != null) carta2.dispose();
+        // No dispondremos cartasElegidas: las pasa PantallaSeleccionEfecto (que las usará para la batalla)
     }
 }
