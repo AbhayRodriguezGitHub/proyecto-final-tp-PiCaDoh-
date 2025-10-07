@@ -1,15 +1,20 @@
 package mijuego.red;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 
 import java.io.*;
 import java.net.*;
-import java.util.function.Consumer;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
+import java.util.function.Consumer;
 
+/**
+ * Cliente TCP simple.
+ * Añadidos helpers: sendInvoke (tropa), sendInvokeEffect (efecto), sendPlay().
+ */
 public class ClienteLAN {
     private final String host;
     private final int port;
@@ -18,7 +23,7 @@ public class ClienteLAN {
     private BufferedReader in;
     private final Gson gson = new Gson();
     private final ExecutorService pool = Executors.newSingleThreadExecutor();
-    private Consumer<JsonObject> onMessage; // listener
+    private Consumer<com.google.gson.JsonObject> onMessage; // listener
 
     public ClienteLAN(String host, int port) {
         this.host = host; this.port = port;
@@ -41,7 +46,7 @@ public class ClienteLAN {
         try {
             String line;
             while ((line = in.readLine()) != null) {
-                JsonObject obj = gson.fromJson(line, JsonObject.class);
+                com.google.gson.JsonObject obj = gson.fromJson(line, com.google.gson.JsonObject.class);
                 if (onMessage != null) onMessage.accept(obj);
             }
         } catch (IOException e) {
@@ -51,11 +56,11 @@ public class ClienteLAN {
         }
     }
 
-    public void setOnMessage(Consumer<JsonObject> listener) {
+    public void setOnMessage(Consumer<com.google.gson.JsonObject> listener) {
         this.onMessage = listener;
     }
 
-    public void sendJson(JsonObject obj) {
+    public void sendJson(com.google.gson.JsonObject obj) {
         if (out != null) out.println(gson.toJson(obj));
     }
 
@@ -77,12 +82,37 @@ public class ClienteLAN {
         o.add("tropas", arr);
         sendJson(o);
     }
+
     public void sendEffectReady(java.util.List<String> classNames) {
         JsonObject o = new JsonObject();
         o.addProperty("type","EFFECT_READY");
         JsonArray arr = new JsonArray();
         classNames.forEach(arr::add);
         o.add("efectos", arr);
+        sendJson(o);
+    }
+
+    // Nuevo: avisar INVOKE de tropa (slot 0..4)
+    public void sendInvoke(int slot, String className) {
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "INVOKE");
+        o.addProperty("slot", slot);
+        o.addProperty("class", className);
+        sendJson(o);
+    }
+
+    // Nuevo: avisar INVOKE_EFFECT (no necesariamente tiene slot; en tu diseño hay una ranura de efecto propia)
+    public void sendInvokeEffect(String className) {
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "INVOKE_EFFECT");
+        o.addProperty("class", className);
+        sendJson(o);
+    }
+
+    // Nuevo: avisar PLAY
+    public void sendPlay() {
+        JsonObject o = new JsonObject();
+        o.addProperty("type","PLAY");
         sendJson(o);
     }
 }

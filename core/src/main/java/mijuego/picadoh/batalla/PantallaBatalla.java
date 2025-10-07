@@ -18,13 +18,12 @@ import com.badlogic.gdx.utils.viewport.Viewport;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.Gson;
 
 import mijuego.picadoh.Principal;
 import mijuego.picadoh.cartas.CartaTropa;
 import mijuego.picadoh.efectos.CartaEfecto;
-import mijuego.picadoh.efectos.RegistroEfectos;
 import mijuego.picadoh.cartas.RegistroCartas;
+import mijuego.picadoh.efectos.RegistroEfectos;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,13 +31,13 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * PantallaBatalla con sincronización LAN básica:
- * - Envía INVOKE cuando invocas (slot + class)
- * - Envía PLAY cuando presionás play
- * - Procesa REVEAL recibido desde servidor (se ejecuta en hilo principal)
+ * PantallaBatalla completa con soporte LAN:
+ * - envía INVOKE / INVOKE_EFFECT al colocar cartas/efectos
+ * - al presionar PLAY envía PLAY al servidor y espera REVEAL
+ * - recibe REVEAL y, en hilo principal, crea instancias y ejecuta la fase de combate
  *
- * Requisitos:
- * - juego.clienteLAN debe estar conectado (connect()) antes de usar las funciones de red.
+ * Esta clase contiene TODO el código de la pantalla de batalla (basada en tu versión original)
+ * con las modificaciones necesarias para la sincronización LAN.
  */
 public class PantallaBatalla implements Screen {
 
@@ -92,6 +91,9 @@ public class PantallaBatalla implements Screen {
 
     private CartaEfecto efectoEnRanuraJugador = null;
     private boolean efectoAplicadoEsteTurno = false;
+
+    // Si enemigo tiene efecto actualmente visible
+    private CartaEfecto efectoEnRanuraEnemigo = null;
 
     private static class SnapshotStats {
         final CartaTropa tropa;
@@ -186,10 +188,9 @@ public class PantallaBatalla implements Screen {
     private static final int MAX_INVOC_TROPAS_TURNO = 2;
     private int invocacionesTropaEsteTurno = 0;
 
-    // Estado LAN
-    private boolean esperandoReveal = false; // True después de enviar PLAY hasta recibir REVEAL
-
-    private final Gson gson = new Gson();
+    // --- Flags y estado LAN ---
+    private boolean esperandoReveal = false; // estamos esperando REVEAL del servidor
+    private boolean clientListenerRegistered = false;
 
     public PantallaBatalla(Principal juego, ContextoBatalla contexto, List<CartaEfecto> efectosDisponibles) {
         this.juego = juego;
@@ -285,6 +286,7 @@ public class PantallaBatalla implements Screen {
         nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));
         nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));
 
+        // Registrar input
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean keyDown(int keycode) {
@@ -306,7 +308,8 @@ public class PantallaBatalla implements Screen {
                     return true;
                 }
                 if (keycode == com.badlogic.gdx.Input.Keys.SPACE) {
-                    iniciarBatallaConSiguiente();
+                    // Presionar espacio actúa como botón PLAY
+                    onPlayButtonPressed();
                     return true;
                 }
                 return false;
@@ -319,7 +322,7 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
-                if (batallaEnCurso || partidaTerminada || esperandoReveal) return false;
+                if (batallaEnCurso || partidaTerminada) return false;
 
                 unproj(screenX, screenY);
                 float wx = tmpUnproject.x;
@@ -327,8 +330,7 @@ public class PantallaBatalla implements Screen {
 
                 if (wx >= BOTON_PLAY_X && wx <= BOTON_PLAY_X + BOTON_PLAY_ANCHO &&
                     wy >= BOTON_PLAY_Y && wy <= BOTON_PLAY_Y + BOTON_PLAY_ALTO) {
-                    // cuando se presiona play, mandamos PLAY al servidor y bloqueamos
-                    enviarPlayAlServidor();
+                    onPlayButtonPressed();
                     System.out.println("[INPUT] Botón PLAY presionado → play/esperando");
                     return true;
                 }
@@ -354,7 +356,7 @@ public class PantallaBatalla implements Screen {
                     if (wx >= x && wx <= x + ANCHO_CARTA &&
                         wy >= Y_CARTA_MANO && wy <= Y_CARTA_MANO + ALTURA_CARTA + 30) {
                         cartaSeleccionada = manoTropas.get(i);
-                        cartaSeleccionadaIndex = i; // <-- guardamos índice
+                        cartaSeleccionadaIndex = i; // guardamos índice
                         cartaDragX = wx - ANCHO_CARTA / 2f;
                         cartaDragY = wy - ALTURA_CARTA / 2f;
                         arrastrando = true;
@@ -366,7 +368,7 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchDragged(int screenX, int screenY, int pointer) {
-                if (batallaEnCurso || partidaTerminada || esperandoReveal) return false;
+                if (batallaEnCurso || partidaTerminada) return false;
 
                 unproj(screenX, screenY);
                 float wx = tmpUnproject.x;
@@ -400,7 +402,7 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchUp(int screenX, int screenY, int pointer, int button) {
-                if (batallaEnCurso || partidaTerminada || esperandoReveal) return false;
+                if (batallaEnCurso || partidaTerminada) return false;
 
                 unproj(screenX, screenY);
                 float wx = tmpUnproject.x;
@@ -408,7 +410,6 @@ public class PantallaBatalla implements Screen {
 
                 if (arrastrando && cartaSeleccionada != null) {
                     boolean invocado = false;
-                    int ranuraIndexInvocada = -1;
                     // Intentamos invocar SOLO en las ranuras del JUGADOR (índices 0..4)
                     for (int idx = 0; idx < 5; idx++) {
                         Ranura ranura = ranuras.get(idx);
@@ -441,19 +442,24 @@ public class PantallaBatalla implements Screen {
                                 invocacionesTropaEsteTurno++;
                                 System.out.println("[INVOCACIÓN] Tropas invocadas este turno: " + invocacionesTropaEsteTurno + "/" + MAX_INVOC_TROPAS_TURNO);
                                 invocado = true;
-                                ranuraIndexInvocada = idx;
+
+                                // --- ENVÍO LAN: INVOKE (slot idx, className) ---
+                                try {
+                                    if (juego.clienteLAN != null) {
+                                        String className = cartaSeleccionada.getClass().getName();
+                                        juego.clienteLAN.sendInvoke(idx, className);
+                                        System.out.println("[LAN-SENT] INVOKE -> slot=" + idx + " class=" + className);
+                                    }
+                                } catch (Exception ex) {
+                                    System.out.println("[LAN] Error al enviar INVOKE: " + ex.getMessage());
+                                }
+
                             } else {
                                 System.out.println("[INVOCACIÓN BLOQUEADA] No puedes invocar carta de nivel "
                                     + cartaSeleccionada.getNivel() + " en el turno " + turnoActual);
                             }
                             break;
                         }
-                    }
-
-                    // Si invocamos correctamente, mandamos INVOKE al servidor (slot 1..5)
-                    if (invocado && ranuraIndexInvocada >= 0) {
-                        String clase = cartaSeleccionada.getClass().getName();
-                        enviarInvokeAlServidor(ranuraIndexInvocada + 1, clase);
                     }
 
                     // reset selección siempre
@@ -471,6 +477,17 @@ public class PantallaBatalla implements Screen {
                         efectoEnRanuraJugador = cartaEfectoSeleccionada;
                         System.out.println("[EFECTO] Colocado efecto en ranura: " + efectoEnRanuraJugador.getNombre());
                         invocado = true;
+
+                        // Envío LAN: INVOKE_EFFECT (notify server the effect placed)
+                        try {
+                            if (juego.clienteLAN != null) {
+                                String className = efectoEnRanuraJugador.getClass().getName();
+                                juego.clienteLAN.sendInvokeEffect(className);
+                                System.out.println("[LAN-SENT] INVOKE_EFFECT -> class=" + className);
+                            }
+                        } catch (Exception ex) {
+                            System.out.println("[LAN] Error al enviar INVOKE_EFFECT: " + ex.getMessage());
+                        }
 
                         if (efectoEnRanuraJugador.esInstantaneo()) {
                             try {
@@ -522,7 +539,7 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean mouseMoved(int screenX, int screenY) {
-                if (batallaEnCurso || partidaTerminada || esperandoReveal) {
+                if (batallaEnCurso || partidaTerminada) {
                     cartaHoverIndex = -1;
                     efectoHoverIndex = -1;
                     return false;
@@ -555,157 +572,29 @@ public class PantallaBatalla implements Screen {
                 return false;
             }
         });
-
-        // Registrar listener LAN (si hay cliente)
-        registerClientListenerIfNeeded();
     }
 
-    private void registerClientListenerIfNeeded() {
-        if (juego == null || juego.clienteLAN == null) return;
-
-        // Este listener correrá en el thread del cliente; si necesita crear Texturas o instancias gráficas
-        // lo pasamos al hilo principal con Gdx.app.postRunnable(...)
-        juego.clienteLAN.setOnMessage(json -> {
-            try {
-                if (json == null || !json.has("type")) return;
-                String type = json.get("type").getAsString();
-                if ("MATCHED".equals(type)) {
-                    System.out.println("[LAN-RECV] " + json.toString());
-                } else if ("REVEAL".equals(type)) {
-                    System.out.println("[LAN-RECV] REVEAL: " + json.toString());
-                    // procesar reveal en hilo principal para evitar crear Textures fuera del contexto GL
-                    Gdx.app.postRunnable(() -> {
-                        applyReveal(json);
-                        // liberamos el bloqueo de espera (siempre que llegue REVEAL)
-                        esperandoReveal = false;
-                    });
-                } else if ("OPPONENT_DISCONNECTED".equals(type)) {
-                    System.out.println("[LAN-RECV] Rival desconectado.");
-                    // Podrías mostrar mensaje en pantalla o regresar al menú
-                } else {
-                    // otros tipos (pong, etc.)
-                    System.out.println("[LAN-RECV] " + json.toString());
-                }
-            } catch (Exception ex) {
-                System.out.println("[LAN-RECV] Error procesando mensaje: " + ex.getMessage());
-            }
-        });
-    }
-
-    // Enviar INVOKE al servidor
-    private void enviarInvokeAlServidor(int slot, String className) {
-        if (juego == null || juego.clienteLAN == null) return;
+    private void onPlayButtonPressed() {
+        // Si estamos en LAN (cliente conectado), no iniciar batalla localmente; avisar al servidor y esperar REVEAL.
+        boolean sent = false;
         try {
-            JsonObject o = new JsonObject();
-            o.addProperty("type", "INVOKE");
-            o.addProperty("slot", slot); // 1..5
-            o.addProperty("class", className);
-            juego.clienteLAN.sendJson(o);
-            System.out.println("[LAN-SENT] INVOKE -> slot=" + slot + " class=" + className);
+            if (juego.clienteLAN != null) {
+                juego.clienteLAN.sendPlay();
+                esperandoReveal = true;
+                sent = true;
+                System.out.println("[CLIENTE-LAN] PLAY enviado. Esperando REVEAL del servidor...");
+            }
         } catch (Exception ex) {
-            System.out.println("[LAN-SENT] Error enviando INVOKE: " + ex.getMessage());
+            System.out.println("[CLIENTE-LAN] Error al enviar PLAY: " + ex.getMessage());
         }
-    }
 
-    // Enviar PLAY al servidor (y marcar esperandoReveal para bloquear inputs hasta recibir REVEAL)
-    private void enviarPlayAlServidor() {
-        if (juego == null || juego.clienteLAN == null) {
-            // fallback local: ejecutar batalla directamente
+        if (!sent) {
+            // modo offline: iniciar batalla localmente
             iniciarBatallaConSiguiente();
-            return;
+        } else {
+            // Mostrar "Esperando rival..." visualmente: puedes establecer un flag y dibujarlo en render()
+            mostrarBotonSiguiente = false; // no mostrar botón de ejecutar hasta REVEAL
         }
-        try {
-            JsonObject o = new JsonObject();
-            o.addProperty("type", "PLAY");
-            juego.clienteLAN.sendJson(o);
-            esperandoReveal = true;
-            // opcional: mostrar indicador "Esperando rival..." (podés dibujarlo en render según esperandoReveal)
-            System.out.println("[CLIENTE-LAN] PLAY enviado. Esperando REVEAL del servidor...");
-        } catch (Exception ex) {
-            System.out.println("[CLIENTE-LAN] Error enviando PLAY: " + ex.getMessage());
-            // fallback local
-            iniciarBatallaConSiguiente();
-        }
-    }
-
-    // Aplica los invokes recibidos en el REVEAL (ya estamos en hilo principal cuando se llama)
-    private void applyReveal(JsonObject msg) {
-        try {
-            // playerInvokes: lista de objetos { slot: int, class: string }
-            // enemyInvokes: lista de objetos { slot: int, class: string }
-            List<JsonObject> playerInvokes = new ArrayList<>();
-            List<JsonObject> enemyInvokes = new ArrayList<>();
-
-            if (msg.has("playerInvokes")) {
-                JsonArray arr = msg.getAsJsonArray("playerInvokes");
-                for (JsonElement e : arr) {
-                    if (e.isJsonObject()) playerInvokes.add(e.getAsJsonObject());
-                }
-            }
-            if (msg.has("enemyInvokes")) {
-                JsonArray arr = msg.getAsJsonArray("enemyInvokes");
-                for (JsonElement e : arr) {
-                    if (e.isJsonObject()) enemyInvokes.add(e.getAsJsonObject());
-                }
-            }
-
-            // Crear y colocar las tropas reveladas:
-            // playerInvokes -> ranuras 0..4 (slot 1 -> index 0)
-            // enemyInvokes -> ranuras 5..9 (slot 1 -> index 5)
-            for (JsonObject p : playerInvokes) {
-                int slot = p.has("slot") ? p.get("slot").getAsInt() : -1;
-                String cls = p.has("class") ? p.get("class").getAsString() : null;
-                if (slot >= 1 && slot <= 5 && cls != null) {
-                    CartaTropa t = createTropaInstanceByName(cls);
-                    if (t != null) {
-                        ranuras.get(slot - 1).setCarta(t);
-                        System.out.println("[LAN-REVEAL] Player slot " + slot + " -> " + cls);
-                    }
-                }
-            }
-            for (JsonObject p : enemyInvokes) {
-                int slot = p.has("slot") ? p.get("slot").getAsInt() : -1;
-                String cls = p.has("class") ? p.get("class").getAsString() : null;
-                if (slot >= 1 && slot <= 5 && cls != null) {
-                    CartaTropa t = createTropaInstanceByName(cls);
-                    if (t != null) {
-                        ranuras.get(5 + (slot - 1)).setCarta(t);
-                        System.out.println("[LAN-REVEAL] Enemy slot " + slot + " -> " + cls);
-                    }
-                }
-            }
-
-            // Al recibir REVEAL, ejecutamos la fase de combate localmente (mismo comportamiento que cuando se presiona PLAY)
-            iniciarBatallaConSiguiente();
-        } catch (Exception ex) {
-            System.out.println("[LAN-REVEAL] Error applying reveal: " + ex.getMessage());
-            ex.printStackTrace();
-            // fallback: iniciar batalla local
-            iniciarBatallaConSiguiente();
-        }
-    }
-
-    // Intenta crear una tropa por nombre de clase o por nombre simple/display name
-    private CartaTropa createTropaInstanceByName(String name) {
-        if (name == null) return null;
-        // 1) intentar Class.forName
-        try {
-            Class<?> c = Class.forName(name);
-            if (CartaTropa.class.isAssignableFrom(c)) {
-                @SuppressWarnings("unchecked")
-                Class<? extends CartaTropa> ct = (Class<? extends CartaTropa>) c;
-                return RegistroCartas.crear(ct);
-            }
-        } catch (Throwable ignored) {}
-
-        // 2) intentar registro por nombre simple o por display name
-        try {
-            Optional<CartaTropa> opt = RegistroCartas.crearPorNombre(name);
-            if (opt.isPresent()) return opt.get();
-        } catch (Throwable ignored) {}
-
-        System.out.println("[LAN] No se pudo crear tropa: " + name);
-        return null;
     }
 
     private void iniciarBatallaConSiguiente() {
@@ -806,8 +695,12 @@ public class PantallaBatalla implements Screen {
 
     @Override
     public void show() {
+        // reproducir música
         juego.detenerMusicaSeleccion();
         juego.reproducirMusicaBatalla();
+
+        // registrar listener LAN (si aplica)
+        registerClientListenerIfNeeded();
     }
 
     @Override
@@ -853,12 +746,29 @@ public class PantallaBatalla implements Screen {
             batch.draw(efectoEnRanuraJugador.getImagen(), EFECTO_JUG_X1, EFECTO_JUG_Y1, EFECTO_FULL_W, EFECTO_FULL_H);
         }
 
+        if (efectoEnRanuraEnemigo != null) {
+            // mostrar efecto enemigo en la parte superior (zona enemiga)
+            batch.draw(efectoEnRanuraEnemigo.getImagen(), EFECTO_ENE_X1, EFECTO_ENE_Y1, EFECTO_FULL_W, EFECTO_FULL_H);
+        }
+
         if (arrastrandoEfecto && cartaEfectoSeleccionada != null) {
             batch.draw(cartaEfectoSeleccionada.getImagen(), efectoDragX, efectoDragY, ANCHO_CARTA, ALTURA_CARTA);
         }
 
         if (mostrarBotonSiguiente) {
             batch.draw(imgSiguiente, BOTON_PLAY_X, BOTON_PLAY_Y, BOTON_PLAY_ANCHO, BOTON_PLAY_ALTO);
+        }
+
+        // si estamos esperando REVEAL, dibujar mensaje
+        if (esperandoReveal) {
+            BitmapFont f = new BitmapFont();
+            GlyphLayout g = new GlyphLayout();
+            String s = "Esperando rival...";
+            g.setText(f, s);
+            f.setColor(Color.WHITE);
+            float sx = 960 - g.width / 2f;
+            float sy = 540 + g.height / 2f;
+            f.draw(batch, g, sx, sy);
         }
 
         String textoTurno = String.valueOf(turnoActual);
@@ -912,17 +822,6 @@ public class PantallaBatalla implements Screen {
             shapeRenderer.rect(EFECTO_JUG_X1, EFECTO_JUG_Y1, EFECTO_FULL_W, EFECTO_FULL_H);
             shapeRenderer.end();
             Gdx.gl.glDisable(GL20.GL_BLEND);
-        }
-
-        if (esperandoReveal) {
-            // dibujar texto "Esperando rival..." simple
-            batch.begin();
-            BitmapFont f = new BitmapFont();
-            GlyphLayout g = new GlyphLayout();
-            g.setText(f, "Esperando rival...");
-            f.setColor(Color.WHITE);
-            f.draw(batch, g, (1920 - g.width) / 2f, 540f);
-            batch.end();
         }
 
         if (batallaEnCurso) {
@@ -1180,5 +1079,205 @@ public class PantallaBatalla implements Screen {
             juego.reproducirMusicaEmpate();
             juego.setScreen(new PantallaEmpate(juego));
         }
+    }
+
+    // ------------------------------------------------------------
+    // ----------   FUNCIONES LAN / REVEAL / INVOKE ETC   ----------
+    // ------------------------------------------------------------
+
+    private void registerClientListenerIfNeeded() {
+        if (clientListenerRegistered) return;
+        if (juego.clienteLAN == null) return;
+
+        juego.clienteLAN.setOnMessage(json -> {
+            String type = null;
+            try { type = json.get("type").getAsString(); } catch (Exception ignored) {}
+
+            if ("MATCHED".equals(type)) {
+                System.out.println("[LAN-RECV] " + json.toString());
+                return;
+            }
+
+            if ("REVEAL".equals(type)) {
+                // Important: create textures/instances on main thread
+                Gdx.app.postRunnable(() -> {
+                    System.out.println("[LAN-RECV] REVEAL: " + json.toString());
+
+                    // aplicar playerInvokes (propias)
+                    if (json.has("playerInvokes")) {
+                        JsonArray arr = json.getAsJsonArray("playerInvokes");
+                        applyPlayerInvokesFromJsonArray(arr);
+                    }
+                    // aplicar enemyInvokes
+                    if (json.has("enemyInvokes")) {
+                        JsonArray arr = json.getAsJsonArray("enemyInvokes");
+                        applyEnemyInvokesFromJsonArray(arr);
+                    }
+                    // efectos propios (revelados)
+                    if (json.has("playerEffectInvokes")) {
+                        JsonArray arr = json.getAsJsonArray("playerEffectInvokes");
+                        applyPlayerEffectInvokesFromJsonArray(arr);
+                    }
+                    // efectos enemigos (revelados)
+                    if (json.has("enemyEffectInvokes")) {
+                        JsonArray arr = json.getAsJsonArray("enemyEffectInvokes");
+                        applyEnemyEffectInvokesFromJsonArray(arr);
+                    }
+
+                    // ya recibimos REVEAL: dejar de esperar y ejecutar fase de batalla localmente
+                    esperandoReveal = false;
+                    // Ejecutar batalla localmente ahora que el estado fue revelado
+                    iniciarBatallaConSiguiente();
+                });
+            }
+
+            if ("OPPONENT_DISCONNECTED".equals(type)) {
+                System.out.println("[CLIENTE-LAN] Rival desconectado.");
+                // podrías manejarlo (volver al menu, etc.)
+            }
+        });
+
+        clientListenerRegistered = true;
+    }
+
+    // Aplica los invokes del propio jugador (se esperan ranuras 0..4)
+    private void applyPlayerInvokesFromJsonArray(JsonArray arr) {
+        if (arr == null) return;
+        for (JsonElement e : arr) {
+            try {
+                JsonObject o = e.getAsJsonObject();
+                int slot = o.has("slot") ? o.get("slot").getAsInt() : -1;
+                String cls = o.has("class") ? o.get("class").getAsString() : null;
+                if (slot >= 0 && cls != null && slot < 5) {
+                    CartaTropa instancia = createTropaInstanceByName(cls);
+                    if (instancia != null) {
+                        ranuras.get(slot).setCarta(instancia);
+                        System.out.println("[LAN-APPLY] player invoke applied slot=" + slot + " cls=" + cls);
+                    }
+                }
+            } catch (Exception ex) {
+                System.out.println("[LAN-ERR] applyPlayerInvokes: " + ex.getMessage());
+            }
+        }
+    }
+
+    // Aplica invokes enemigas (slot en JSON 0..4 -> mapeo a 5..9)
+    private void applyEnemyInvokesFromJsonArray(JsonArray arr) {
+        if (arr == null) return;
+        for (JsonElement e : arr) {
+            try {
+                JsonObject o = e.getAsJsonObject();
+                int slot = o.has("slot") ? o.get("slot").getAsInt() : -1;
+                String cls = o.has("class") ? o.get("class").getAsString() : null;
+                if (slot >= 0 && cls != null && slot < 5) {
+                    int enemyIndex = slot + 5;
+                    CartaTropa instancia = createTropaInstanceByName(cls);
+                    if (instancia != null) {
+                        ranuras.get(enemyIndex).setCarta(instancia);
+                        System.out.println("[LAN-APPLY] enemy invoke applied enemySlot=" + enemyIndex + " cls=" + cls);
+                    }
+                }
+            } catch (Exception ex) {
+                System.out.println("[LAN-ERR] applyEnemyInvokes: " + ex.getMessage());
+            }
+        }
+    }
+
+    // Aplicar efectos propios (se muestran en la zona del jugador)
+    private void applyPlayerEffectInvokesFromJsonArray(JsonArray arr) {
+        if (arr == null) return;
+        for (JsonElement e : arr) {
+            try {
+                JsonObject o = e.getAsJsonObject();
+                String cls = o.has("class") ? o.get("class").getAsString() : null;
+                if (cls != null) {
+                    CartaEfecto efecto = createEfectoInstanceByName(cls);
+                    if (efecto != null) {
+                        efectoEnRanuraJugador = efecto;
+                        System.out.println("[LAN-APPLY] player effect applied: " + cls);
+                    }
+                }
+            } catch (Exception ex) {
+                System.out.println("[LAN-ERR] applyPlayerEffectInvokes: " + ex.getMessage());
+            }
+        }
+    }
+
+    // Aplicar efectos enemigos (se muestran en la zona enemiga y aplican a sus tropas si corresponde)
+    private void applyEnemyEffectInvokesFromJsonArray(JsonArray arr) {
+        if (arr == null) return;
+        for (JsonElement e : arr) {
+            try {
+                JsonObject o = e.getAsJsonObject();
+                String cls = o.has("class") ? o.get("class").getAsString() : null;
+                if (cls != null) {
+                    CartaEfecto efecto = createEfectoInstanceByName(cls);
+                    if (efecto != null) {
+                        efectoEnRanuraEnemigo = efecto;
+                        System.out.println("[LAN-APPLY] enemy effect applied (shown): " + cls);
+
+                        // Opcional: aplicar efecto en las tropas enemigas en contexto para que se note en la batalla
+                        // (contexto.tomar la tropa y aplicar efecto)
+                        try {
+                            for (int i = 5; i < 10; i++) {
+                                CartaTropa t = ranuras.get(i).getCarta();
+                                if (t != null) {
+                                    contexto.setTropaSeleccionada(t);
+                                    efecto.aplicarEfecto(contexto);
+                                }
+                            }
+                            contexto.setTropaSeleccionada(null);
+                        } catch (Exception ex) {
+                            System.out.println("[LAN-ERR] applyEnemyEffectInvokes application: " + ex.getMessage());
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                System.out.println("[LAN-ERR] applyEnemyEffectInvokes: " + ex.getMessage());
+            }
+        }
+    }
+
+    // Crea una instancia de tropa a partir del nombre. Se asume que se invoca en hilo principal.
+    private CartaTropa createTropaInstanceByName(String name) {
+        if (name == null) return null;
+        // 1) intentar Class.forName
+        try {
+            Class<?> c = Class.forName(name);
+            if (CartaTropa.class.isAssignableFrom(c)) {
+                @SuppressWarnings("unchecked")
+                Class<? extends CartaTropa> ct = (Class<? extends CartaTropa>) c;
+                return RegistroCartas.crear(ct);
+            }
+        } catch (Throwable ignored) {}
+
+        // 2) intentar registro por nombre/simple
+        try {
+            Optional<CartaTropa> opt = RegistroCartas.crearPorNombre(name);
+            if (opt.isPresent()) return opt.get();
+        } catch (Throwable ignored) {}
+
+        System.out.println("[LAN] No se pudo crear tropa: " + name);
+        return null;
+    }
+
+    private CartaEfecto createEfectoInstanceByName(String name) {
+        if (name == null) return null;
+        try {
+            Class<?> c = Class.forName(name);
+            if (CartaEfecto.class.isAssignableFrom(c)) {
+                @SuppressWarnings("unchecked")
+                Class<? extends CartaEfecto> ce = (Class<? extends CartaEfecto>) c;
+                return RegistroEfectos.crear(ce);
+            }
+        } catch (Throwable ignored) {}
+
+        try {
+            Optional<CartaEfecto> opt = RegistroEfectos.crearPorNombre(name);
+            if (opt.isPresent()) return opt.get();
+        } catch (Throwable ignored) {}
+
+        System.out.println("[LAN] No se pudo crear efecto: " + name);
+        return null;
     }
 }

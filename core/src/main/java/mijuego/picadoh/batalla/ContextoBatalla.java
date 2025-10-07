@@ -1,23 +1,39 @@
 package mijuego.picadoh.batalla;
 
 import mijuego.picadoh.cartas.CartaTropa;
+import mijuego.picadoh.efectos.CartaEfecto;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
+/**
+ * Contexto de batalla que mantiene el estado (tropas propias/enemigas, vida, flags de efectos)
+ * y permite aplicar efectos desde la perspectiva del jugador o desde la perspectiva enemiga.
+ *
+ * IMPORTANT: cuando recibas un REVEAL desde la red, instanciá los efectos (RegistroEfectos.crear)
+ * y llamá:
+ *   contexto.applyEffectAsPlayer(efecto); // si el effect viene en playerEffectInvokes (local)
+ *   contexto.applyEffectAsEnemy(efecto);  // si el effect viene en enemyEffectInvokes (rival)
+ *
+ * De ese modo no necesitás duplicar la lógica de los efectos: el mismo efecto actúa
+ * sobre tropasPropias/tropasEnemigas de forma transparente.
+ */
 public class ContextoBatalla {
     private static final int MAX_TROPAS_EN_CAMPO = 5;
     private static final int VIDA_MAXIMA = 80;
 
+    // listas internas (siempre guardadas en el orden "propias" y "enemigas" desde la creación)
     private final List<CartaTropa> tropasPropias;
     private final List<CartaTropa> tropasEnemigas;
 
+    // estado de vida (almacenado como valores absolutos; getters pueden invertir)
     private int vidaPropia;
     private int vidaEnemiga;
 
     private CartaTropa tropaSeleccionada;
+
+    // perspectiva: false = normal (getTropasPropias -> tropasPropias).
+    // true = invertida (getTropasPropias -> tropasEnemigas), útil para aplicar efectos del rival.
+    private boolean perspectivaInvertida = false;
 
     // Flags de efectos
     private boolean limpiarCampoSolicitado = false;      // Bombardrilo
@@ -30,6 +46,7 @@ public class ContextoBatalla {
 
     private boolean intercambioSolicitado = false;
 
+    // reversiones registradas por efectos temporales (se ejecutan en revertirEfectosTurno)
     private final List<Runnable> reversionesTurno = new ArrayList<>();
 
     // Constructores
@@ -40,98 +57,169 @@ public class ContextoBatalla {
     public ContextoBatalla(List<CartaTropa> propias, List<CartaTropa> enemigas, int vidaP, int vidaE) {
         this.tropasPropias = new ArrayList<>(propias);
         this.tropasEnemigas = new ArrayList<>(enemigas);
-        this.vidaPropia = vidaP;
-        this.vidaEnemiga = vidaE;
+        this.vidaPropia = Math.max(0, Math.min(vidaP, VIDA_MAXIMA));
+        this.vidaEnemiga = Math.max(0, Math.min(vidaE, VIDA_MAXIMA));
     }
 
+    // -----------------
+    // Perspectiva utils
+    // -----------------
+    /**
+     * Ejecuta runnable con perspectiva invertida temporalmente (útil para aplicar efectos del rival).
+     */
+    public void withPerspectiveInverted(Runnable r) {
+        boolean old = this.perspectivaInvertida;
+        this.perspectivaInvertida = !old;
+        try {
+            r.run();
+        } finally {
+            this.perspectivaInvertida = old;
+        }
+    }
 
-    public List<CartaTropa> getTropasPropias() { return tropasPropias; }
-    public List<CartaTropa> getTropasEnemigas() { return tropasEnemigas; }
-    public int getVidaPropia() { return vidaPropia; }
-    public int getVidaEnemiga() { return vidaEnemiga; }
-    public int getVidaMaxima() { return VIDA_MAXIMA; }
-    public CartaTropa getTropaSeleccionada() { return tropaSeleccionada; }
+    public void setPerspectiveInvertida(boolean v) {
+        this.perspectivaInvertida = v;
+    }
 
-    // Vida
+    public boolean isPerspectiveInvertida() {
+        return this.perspectivaInvertida;
+    }
+
+    // -----------------
+    // Getters (respetan perspectiva)
+    // -----------------
+    /**
+     * Retorna la lista de tropas que, desde la perspectiva actual, se consideran "propias".
+     * Si perspectivaInvertida == true, devuelve la lista interna de 'tropasEnemigas'.
+     */
+    public List<CartaTropa> getTropasPropias() {
+        return perspectivaInvertida ? tropasEnemigas : tropasPropias;
+    }
+
+    public List<CartaTropa> getTropasEnemigas() {
+        return perspectivaInvertida ? tropasPropias : tropasEnemigas;
+    }
+
+    public int getVidaPropia() {
+        return perspectivaInvertida ? vidaEnemiga : vidaPropia;
+    }
+
+    public int getVidaEnemiga() {
+        return perspectivaInvertida ? vidaPropia : vidaEnemiga;
+    }
+
+    public int getVidaMaxima() {
+        return VIDA_MAXIMA;
+    }
+
+    public CartaTropa getTropaSeleccionada() {
+        return tropaSeleccionada;
+    }
+
+    // -----------------
+    // Vida (respetan perspectiva)
+    // -----------------
     public void restarVidaEnemiga(int cantidad) {
-        vidaEnemiga -= cantidad;
-        if (vidaEnemiga < 0) vidaEnemiga = 0;
+        if (perspectivaInvertida) {
+            // desde perspectiva invertida, "vida enemiga" apunta a vidaPropia interna
+            vidaPropia -= cantidad;
+            if (vidaPropia < 0) vidaPropia = 0;
+        } else {
+            vidaEnemiga -= cantidad;
+            if (vidaEnemiga < 0) vidaEnemiga = 0;
+        }
     }
 
     public void restarVidaPropia(int cantidad) {
-        vidaPropia -= cantidad;
-        if (vidaPropia < 0) vidaPropia = 0;
+        if (perspectivaInvertida) {
+            // desde perspectiva invertida, "vida propia" apunta a vidaEnemiga interna
+            vidaEnemiga -= cantidad;
+            if (vidaEnemiga < 0) vidaEnemiga = 0;
+        } else {
+            vidaPropia -= cantidad;
+            if (vidaPropia < 0) vidaPropia = 0;
+        }
     }
 
     public void setVidaPropia(int vida) {
-        this.vidaPropia = Math.min(vida, VIDA_MAXIMA);
-        if (this.vidaPropia < 0) this.vidaPropia = 0;
+        if (perspectivaInvertida) {
+            this.vidaEnemiga = Math.min(vida, VIDA_MAXIMA);
+            if (this.vidaEnemiga < 0) this.vidaEnemiga = 0;
+        } else {
+            this.vidaPropia = Math.min(vida, VIDA_MAXIMA);
+            if (this.vidaPropia < 0) this.vidaPropia = 0;
+        }
     }
 
     public void setVidaEnemiga(int vida) {
-        this.vidaEnemiga = Math.min(vida, VIDA_MAXIMA);
-        if (this.vidaEnemiga < 0) this.vidaEnemiga = 0;
+        if (perspectivaInvertida) {
+            this.vidaPropia = Math.min(vida, VIDA_MAXIMA);
+            if (this.vidaPropia < 0) this.vidaPropia = 0;
+        } else {
+            this.vidaEnemiga = Math.min(vida, VIDA_MAXIMA);
+            if (this.vidaEnemiga < 0) this.vidaEnemiga = 0;
+        }
     }
 
-    // Tropas
+    // -----------------
+    // Tropas (respetan perspectiva)
+    // -----------------
     public boolean agregarTropaPropia(CartaTropa carta) {
-        if (tropasPropias.size() < MAX_TROPAS_EN_CAMPO) {
-            tropasPropias.add(carta);
+        List<CartaTropa> listas = getTropasPropias();
+        if (listas.size() < MAX_TROPAS_EN_CAMPO) {
+            listas.add(carta);
             return true;
         }
         return false;
     }
 
     public boolean agregarTropaEnemiga(CartaTropa carta) {
-        if (tropasEnemigas.size() < MAX_TROPAS_EN_CAMPO) {
-            tropasEnemigas.add(carta);
+        List<CartaTropa> listas = getTropasEnemigas();
+        if (listas.size() < MAX_TROPAS_EN_CAMPO) {
+            listas.add(carta);
             return true;
         }
         return false;
     }
 
-    public boolean estaCampoLlenoPropio() { return tropasPropias.size() >= MAX_TROPAS_EN_CAMPO; }
-    public boolean estaCampoLlenoEnemigo() { return tropasEnemigas.size() >= MAX_TROPAS_EN_CAMPO; }
+    public boolean estaCampoLlenoPropio() { return getTropasPropias().size() >= MAX_TROPAS_EN_CAMPO; }
+    public boolean estaCampoLlenoEnemigo() { return getTropasEnemigas().size() >= MAX_TROPAS_EN_CAMPO; }
 
     // Selección por objetivo
     public void setTropaSeleccionada(CartaTropa tropa) { this.tropaSeleccionada = tropa; }
 
-    // Anarquía de Nivel
+    // -----------------
+    // Flags de efectos (sin perspectiva — flags aplican a la "vista" actual del jugador)
+    // -----------------
     public boolean isInvocacionLibreEsteTurno() { return invocacionLibreEsteTurno; }
     public void setInvocacionLibreEsteTurno(boolean v) { this.invocacionLibreEsteTurno = v; }
 
-    // Avaricioso (invocaciones ilimitadas)
     public boolean isInvocacionesIlimitadasEsteTurno() { return invocacionesIlimitadasEsteTurno; }
     public void setInvocacionesIlimitadasEsteTurno(boolean v) { this.invocacionesIlimitadasEsteTurno = v; }
 
-    // Agente de Tránsito (anula daño enemigo) - NUEVO
     public boolean isAtaquesEnemigosAnuladosEsteTurno() { return ataquesEnemigosAnuladosEsteTurno; }
     public void setAtaquesEnemigosAnuladosEsteTurno(boolean v) { this.ataquesEnemigosAnuladosEsteTurno = v; }
 
-    // Bombardrilo
     public boolean isLimpiarCampoSolicitado() { return limpiarCampoSolicitado; }
     public void setLimpiarCampoSolicitado(boolean v) { this.limpiarCampoSolicitado = v; }
 
-    // Monarquía / Rebelión
     public void solicitarPurgaPorNivel(int... niveles) {
         nivelesAPurgar.clear();
         for (int n : niveles) nivelesAPurgar.add(n);
         purgaPorNivelSolicitada = true;
     }
-
     public boolean isPurgaPorNivelSolicitada() { return purgaPorNivelSolicitada; }
-    public Set<Integer> getNivelesAPurgar() { return nivelesAPurgar; }
+    public Set<Integer> getNivelesAPurgar() { return Collections.unmodifiableSet(nivelesAPurgar); }
     public void limpiarPurgaPorNivelSolicitud() {
         purgaPorNivelSolicitada = false;
         nivelesAPurgar.clear();
     }
 
-
     public void solicitarIntercambio() { intercambioSolicitado = true; }
     public boolean isIntercambioSolicitado() { return intercambioSolicitado; }
     public void limpiarIntercambioSolicitud() { intercambioSolicitado = false; }
 
-
+    // Reversiones de efectos temporales
     public void registrarReversionTurno(Runnable reversion) {
         if (reversion != null) reversionesTurno.add(reversion);
     }
@@ -145,7 +233,7 @@ public class ContextoBatalla {
         }
         reversionesTurno.clear();
 
-
+        // reset flags
         invocacionLibreEsteTurno = false;
         invocacionesIlimitadasEsteTurno = false;
         ataquesEnemigosAnuladosEsteTurno = false;
@@ -155,18 +243,43 @@ public class ContextoBatalla {
         nivelesAPurgar.clear();
     }
 
-
     public void revertirEfectosTemporales() {
         revertirEfectosTurno();
+    }
+
+    // -----------------
+    // Helpers para aplicar efectos con la perspectiva correcta
+    // -----------------
+    /**
+     * Aplica un efecto como si lo hubiese jugado EL JUGADOR LOCAL (sin invertir la perspectiva).
+     * El efecto puede registrar reversiones con contexto.registrarReversionTurno(...)
+     */
+    public void applyEffectAsPlayer(CartaEfecto efecto) {
+        if (efecto == null) return;
+        // Ejecutar con la perspectiva actual (por defecto false)
+        efecto.aplicarEfecto(this);
+    }
+
+    /**
+     * Aplica un efecto como si lo hubiese jugado EL RIVAL: invertimos la perspectiva temporalmente
+     * para que el mismo efecto actúe sobre las tropas/enemigos correctos desde el punto de vista local.
+     */
+    public void applyEffectAsEnemy(CartaEfecto efecto) {
+        if (efecto == null) return;
+        withPerspectiveInverted(() -> {
+            // Si el efecto usa getTropasPropias/getTropasEnemigas o setTropaSeleccionada,
+            // al invertir la perspectiva actuará sobre las estructuras correctas.
+            efecto.aplicarEfecto(this);
+        });
     }
 
     @Override
     public String toString() {
         return "ContextoBatalla{" +
-            "vidaPropia=" + vidaPropia +
-            ", vidaEnemiga=" + vidaEnemiga +
-            ", tropasPropias=" + tropasPropias.size() +
-            ", tropasEnemigas=" + tropasEnemigas.size() +
+            "vidaPropia=" + (perspectivaInvertida ? vidaEnemiga : vidaPropia) +
+            ", vidaEnemiga=" + (perspectivaInvertida ? vidaPropia : vidaEnemiga) +
+            ", tropasPropias=" + getTropasPropias().size() +
+            ", tropasEnemigas=" + getTropasEnemigas().size() +
             ", tropaSeleccionada=" + (tropaSeleccionada != null ? tropaSeleccionada.getClass().getSimpleName() : "null") +
             ", invocacionLibreEsteTurno=" + invocacionLibreEsteTurno +
             ", invocacionesIlimitadasEsteTurno=" + invocacionesIlimitadasEsteTurno +
@@ -176,6 +289,7 @@ public class ContextoBatalla {
             ", nivelesAPurgar=" + nivelesAPurgar +
             ", intercambioSolicitado=" + intercambioSolicitado +
             ", reversionesTurno=" + reversionesTurno.size() +
+            ", perspectivaInvertida=" + perspectivaInvertida +
             '}';
     }
 }
