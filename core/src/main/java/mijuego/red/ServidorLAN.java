@@ -6,27 +6,20 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import javax.swing.*;
+import java.awt.*;
 import java.io.*;
-import java.net.*;
-import java.util.*;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;              // 👈 se importa explícitamente
+import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.*;
 
 /**
  * Servidor TCP simple con matchmaking 1v1 y soporte de INVOKE / PLAY / REVEAL.
- *
- * Protocolos (JSON por línea):
- * - Cliente -> Servidor:
- *   { "type":"TROOP_READY", "tropas":[ "pkg.ClassName", ... ] }
- *   { "type":"EFFECT_READY", "efectos":[ "pkg.ClassName", ... ] }
- *   { "type":"INVOKE", "slot":<0..4>, "class":"full.ClassName" }
- *   { "type":"PLAY" }
- *
- * - Servidor -> Cliente:
- *   { "type":"WELCOME" }
- *   { "type":"MATCHED" }
- *   { "type":"START", ... }   // como antes
- *   { "type":"REVEAL", "playerInvokes":[{slot,class},...], "enemyInvokes":[...] }
- *   { "type":"OPPONENT_DISCONNECTED" }
+ * Ahora además muestra una ventana con la imagen SERVIDOR.png.
  */
 public class ServidorLAN {
     private static final int PORT = 5000;
@@ -38,11 +31,7 @@ public class ServidorLAN {
     private static class Match {
         final ClientHandler a;
         final ClientHandler b;
-
-        Match(ClientHandler a, ClientHandler b) {
-            this.a = a;
-            this.b = b;
-        }
+        Match(ClientHandler a, ClientHandler b) { this.a = a; this.b = b; }
     }
 
     private final Queue<ClientHandler> waiting = new ConcurrentLinkedQueue<>();
@@ -50,6 +39,40 @@ public class ServidorLAN {
     public ServidorLAN(int port) throws IOException {
         this.server = new ServerSocket(port);
         System.out.println("[Servidor] escuchando en puerto " + port);
+        mostrarVentanaServidor();
+    }
+
+    private void mostrarVentanaServidor() {
+        SwingUtilities.invokeLater(() -> {
+            try {
+                JFrame frame = new JFrame("SERVIDOR LAN");
+                frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+                String ruta = "lwjgl3/assets/lan/SERVIDOR.png";
+                File file = new File(ruta);
+
+                if (!file.exists()) {
+                    System.err.println("[Servidor] No se encontró la imagen: " + file.getAbsolutePath());
+                    JLabel label = new JLabel("SERVIDOR LAN ACTIVO", SwingConstants.CENTER);
+                    label.setFont(new Font("Arial", Font.BOLD, 18));
+                    label.setForeground(Color.WHITE);
+                    label.setBackground(Color.DARK_GRAY);
+                    label.setOpaque(true);
+                    frame.add(label);
+                } else {
+                    ImageIcon icon = new ImageIcon(file.getAbsolutePath());
+                    JLabel label = new JLabel(icon);
+                    frame.add(label);
+                }
+
+                frame.pack();
+                frame.setResizable(false);
+                frame.setLocationRelativeTo(null);
+                frame.setVisible(true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
     }
 
     public void start() {
@@ -67,9 +90,7 @@ public class ServidorLAN {
     }
 
     private void shutdown() {
-        try {
-            server.close();
-        } catch (IOException ignored) {}
+        try { server.close(); } catch (IOException ignored) {}
         pool.shutdownNow();
         System.out.println("[Servidor] cerrado.");
     }
@@ -79,14 +100,10 @@ public class ServidorLAN {
         final BufferedReader in;
         final PrintWriter out;
 
-        Match match; // asignado cuando hay un match
-
-        // Para START flow (selección previa)
+        Match match;
         List<String> tropas;
         List<String> efectos;
-
-        // Para la fase por-turno INVOKE/PLAY
-        JsonArray pendingInvokes = new JsonArray(); // array de {slot:..., class:"..."}
+        JsonArray pendingInvokes = new JsonArray();
         boolean playedThisTurn = false;
 
         ClientHandler(Socket s) throws IOException {
@@ -98,7 +115,6 @@ public class ServidorLAN {
         @Override
         public void run() {
             try {
-                // bienvenida
                 out.println(gson.toJson(Map.of("type", "WELCOME")));
                 enqueueAndMatch(this);
 
@@ -119,7 +135,6 @@ public class ServidorLAN {
                             tryStartIfReady();
                             break;
                         case "INVOKE":
-                            // Añadir invoke al array pendiente (no revelar)
                             JsonObject invokeObj = new JsonObject();
                             if (obj.has("slot")) invokeObj.add("slot", obj.get("slot"));
                             if (obj.has("class")) invokeObj.add("class", obj.get("class"));
@@ -129,9 +144,7 @@ public class ServidorLAN {
                         case "PLAY":
                             this.playedThisTurn = true;
                             System.out.println("[Servidor] PLAY recibido de " + socket.getRemoteSocketAddress());
-                            if (match != null) {
-                                checkAndRevealTurn(match);
-                            }
+                            if (match != null) checkAndRevealTurn(match);
                             break;
                         case "PING":
                             out.println(gson.toJson(Map.of("type", "PONG")));
@@ -149,14 +162,11 @@ public class ServidorLAN {
         }
 
         private void tryStartIfReady() {
-            // Si ya hay match, ver si podemos enviar START
             if (match == null) return;
             if (tropas == null || efectos == null) return;
-
             ClientHandler rival = (match.a == this) ? match.b : match.a;
             if (rival.tropas == null || rival.efectos == null) return;
 
-            // Construir START para ambos
             JsonObject msgA = new JsonObject();
             msgA.addProperty("type", "START");
             msgA.add("playerTropas", listToJsonArray(this.tropas));
@@ -195,7 +205,7 @@ public class ServidorLAN {
         void send(String msg) {
             out.println(msg);
         }
-    } // ClientHandler
+    }
 
     private void enqueueAndMatch(ClientHandler ch) {
         waiting.add(ch);
@@ -206,8 +216,6 @@ public class ServidorLAN {
                 Match m = new Match(a, b);
                 a.match = m;
                 b.match = m;
-
-                // avisar emparejamiento
                 a.send(gson.toJson(Map.of("type", "MATCHED")));
                 b.send(gson.toJson(Map.of("type", "MATCHED")));
                 System.out.println("[Servidor] Match creado entre " +
@@ -232,12 +240,6 @@ public class ServidorLAN {
         return a;
     }
 
-    /**
-     * Si ambos jugadores en el match hicieron PLAY, hacemos REVEAL:
-     * - construimos payload con playerInvokes (para cada receptor) y enemyInvokes
-     * - enviamos REVEAL a ambos
-     * - limpiamos pendingInvokes y playedThisTurn para la siguiente ronda
-     */
     private void checkAndRevealTurn(Match m) {
         if (m == null) return;
         ClientHandler A = m.a;
@@ -245,7 +247,6 @@ public class ServidorLAN {
 
         if (!A.playedThisTurn || !B.playedThisTurn) return;
 
-        // Ambos jugaron: construir mensajes REVEAL
         JsonObject msgA = new JsonObject();
         msgA.addProperty("type", "REVEAL");
         msgA.add("playerInvokes", A.pendingInvokes.deepCopy());
@@ -261,7 +262,6 @@ public class ServidorLAN {
 
         System.out.println("[Servidor] REVEAL enviado. A invokes=" + A.pendingInvokes + " | B invokes=" + B.pendingInvokes);
 
-        // limpiar para la siguiente ronda (nueva lista vacía)
         A.pendingInvokes = new JsonArray();
         B.pendingInvokes = new JsonArray();
         A.playedThisTurn = false;
@@ -269,7 +269,6 @@ public class ServidorLAN {
     }
 
     public static void main(String[] args) throws Exception {
-        ServidorLAN s = new ServidorLAN(PORT);
-        s.start();
+        new ServidorLAN(PORT).start();
     }
 }
