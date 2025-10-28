@@ -13,13 +13,21 @@ import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.utils.viewport.ScreenViewport;
-import com.google.gson.JsonObject;
 import mijuego.picadoh.cartas.RegistroCartas;
 
+/**
+ * Clase principal del juego.
+ * - Inicializa recursos globales.
+ * - Crea e intenta conectar el cliente LAN por defecto (127.0.0.1:5000).
+ *
+ * Nota: clienteLAN NO es final para que otras pantallas (ej. PantallaMenu) puedan
+ * reasignarlo o recrearlo si lo necesitan.
+ */
 public class Principal extends Game {
     public SpriteBatch batch;
-    // clienteLAN por defecto apuntando a local; podés cambiar host/port si querés.
-    public final mijuego.red.ClienteLAN clienteLAN = new mijuego.red.ClienteLAN("127.0.0.1", 5000);
+
+    // clienteLAN por defecto apuntando a local; podés reasignarlo desde pantallas si querés.
+    public mijuego.red.ClienteLAN clienteLAN;
 
     private Stage coordenadasStage;
     private Label coordenadasLabel;
@@ -54,10 +62,13 @@ public class Principal extends Game {
         reproducirMusica(); // Menú por defecto
 
         // ----- Conexión LAN -----
+        // Instanciamos el cliente aquí (no final para permitir reasignar si alguna pantalla lo requiere)
+        this.clienteLAN = new mijuego.red.ClienteLAN("127.0.0.1", 5000);
+
         try {
             boolean ok = clienteLAN.connect();
             if (ok) {
-                System.out.println("[LAN] Cliente conectado a " + "127.0.0.1:5000");
+                System.out.println("[LAN] Cliente conectado a 127.0.0.1:5000");
                 // Listener global: imprimir todo lo que llegue (útil para debug)
                 clienteLAN.setOnMessage(json -> {
                     // Este se ejecuta en el hilo del reader; imprimir está bien.

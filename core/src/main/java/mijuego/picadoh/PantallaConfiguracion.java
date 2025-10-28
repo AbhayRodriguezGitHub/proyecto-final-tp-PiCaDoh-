@@ -20,6 +20,9 @@ import com.badlogic.gdx.Graphics.DisplayMode;
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener;
 import com.badlogic.gdx.scenes.scene2d.Actor;
 
+/**
+ * Pantalla de configuración del juego: volumen, cursores y modo ventana/pantalla completa.
+ */
 public class PantallaConfiguracion implements Screen {
     private final Principal juego;
     private Texture fondo;
@@ -38,12 +41,15 @@ public class PantallaConfiguracion implements Screen {
     public void show() {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/MENUCONFIGURACION.png"));
         juego.reproducirMusica();
+
         viewport = new ScalingViewport(Scaling.stretch, VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
         stage = new Stage(viewport);
         Gdx.input.setInputProcessor(stage);
+
         fondoImage = new Image(fondo);
         fondoImage.setSize(VIRTUAL_WIDTH, VIRTUAL_HEIGHT);
         stage.addActor(fondoImage);
+
         Skin skin = new Skin();
         BitmapFont font = new BitmapFont();
         skin.add("default-font", font);
@@ -51,88 +57,121 @@ public class PantallaConfiguracion implements Screen {
         labelStyle.font = font;
         labelStyle.fontColor = Color.WHITE;
         skin.add("default", labelStyle);
+
         ticLabel = new Label("X", skin);
         ticLabel.setFontScale(8f);
         ticLabel.setPosition(1032, 910);
         ticLabel.setVisible(juego.isModoVentana());
         stage.addActor(ticLabel);
+
+        // --- BOTÓN: Modo ventana / pantalla completa ---
         ImageButton botonModoVentana = crearBotonInvisible(1045, 906, 150, 150);
         botonModoVentana.addListener(new ClickListener() {
-            @Override public void clicked(InputEvent event, float x, float y) {
-                boolean nuevoModo = !juego.isModoVentana();
-                juego.setModoVentana(nuevoModo);
-                ticLabel.setVisible(nuevoModo);
-                if (nuevoModo) {
-                    Gdx.graphics.setWindowedMode(1024, 768);
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                boolean nuevoModoVentana = !juego.isModoVentana();
+                juego.setModoVentana(nuevoModoVentana);
+                ticLabel.setVisible(nuevoModoVentana);
+
+                if (nuevoModoVentana) {
+                    // Cambiar a modo ventana (resolución moderada)
+                    Gdx.graphics.setWindowedMode(1280, 720);
+                    System.out.println("[CONFIG] Cambiado a modo ventana (1280x720)");
                 } else {
-                    for (DisplayMode mode : Gdx.graphics.getDisplayModes()) {
-                        if (mode.width == 1920 && mode.height == 1080) {
-                            Gdx.graphics.setFullscreenMode(mode);
-                            break;
-                        }
+                    // Cambiar a pantalla completa al modo actual del monitor
+                    DisplayMode modoPantalla = Gdx.graphics.getDisplayMode();
+                    if (modoPantalla != null) {
+                        Gdx.graphics.setFullscreenMode(modoPantalla);
+                        System.out.println("[CONFIG] Cambiado a pantalla completa (" + modoPantalla.width + "x" + modoPantalla.height + ")");
+                    } else {
+                        System.err.println("[CONFIG] No se pudo obtener modo de pantalla. Intentando modo ventana 1920x1080.");
+                        Gdx.graphics.setWindowedMode(1920, 1080);
                     }
                 }
+
                 resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
                 juego.aplicarCursor();
             }
         });
         stage.addActor(botonModoVentana);
+
+        // --- BOTÓN: Volver ---
         ImageButton botonVolver = crearBotonInvisible(56, 70, 80, 80);
         botonVolver.addListener(new ClickListener() {
-            @Override public void clicked(InputEvent event, float x, float y) {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaMenu(juego));
             }
         });
         stage.addActor(botonVolver);
+
+        // --- BOTONES: Selección de cursor ---
         ImageButton botonCursorSistema = crearBotonInvisible(1138, 237, 193, 182);
         botonCursorSistema.addListener(new ClickListener() {
-            @Override public void clicked(InputEvent event, float x, float y) {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
                 juego.setCursorPersonalizadoUsado(false);
+                juego.aplicarCursor();
+                System.out.println("[CONFIG] Cursor del sistema activado.");
             }
         });
         stage.addActor(botonCursorSistema);
+
         ImageButton botonCursorRubberhose = crearBotonInvisible(1557, 259, 193, 182);
         botonCursorRubberhose.addListener(new ClickListener() {
-            @Override public void clicked(InputEvent event, float x, float y) {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
                 juego.setCursorPersonalizadoUsado(true);
+                juego.aplicarCursor();
+                System.out.println("[CONFIG] Cursor Rubberhose activado.");
             }
         });
         stage.addActor(botonCursorRubberhose);
+
+        // --- SLIDER: Volumen de música ---
         Slider.SliderStyle sliderStyle = new Slider.SliderStyle();
         Pixmap fondoBarra = new Pixmap(1, 10, Pixmap.Format.RGBA8888);
         fondoBarra.setColor(Color.BLACK);
         fondoBarra.fill();
         sliderStyle.background = new TextureRegionDrawable(new TextureRegion(new Texture(fondoBarra)));
         fondoBarra.dispose();
+
         Pixmap knob = new Pixmap(30, 30, Pixmap.Format.RGBA8888);
         knob.setColor(Color.BLACK);
         knob.fillCircle(15, 15, 15);
         sliderStyle.knob = new TextureRegionDrawable(new TextureRegion(new Texture(knob)));
         knob.dispose();
+
         Slider slider = new Slider(0f, 1f, 0.01f, false, sliderStyle);
         slider.setValue(juego.getVolumenMusica());
         slider.setBounds(1252, 630, 471, 30);
         slider.addListener(new ChangeListener() {
-            @Override public void changed(ChangeEvent event, Actor actor) {
+            @Override
+            public void changed(ChangeEvent event, Actor actor) {
                 juego.setVolumenMusica(slider.getValue());
             }
         });
         stage.addActor(slider);
-        ImageButton botonManual = crearBotonInvisible(85, 845, 856 - 85, 986 - 845);
+
+        // --- BOTÓN: Manual ---
+        ImageButton botonManual = crearBotonInvisible(85, 845, 771, 141);
         botonManual.addListener(new ClickListener() {
-            @Override public void clicked(InputEvent event, float x, float y) {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
                 juego.setScreen(new PantallaManual(juego, PantallaConfiguracion.this));
             }
         });
         stage.addActor(botonManual);
     }
 
+    /** Crea un botón invisible para zonas clicables sobre la interfaz. */
     private ImageButton crearBotonInvisible(float x, float y, float width, float height) {
         Pixmap pixmap = new Pixmap((int) width, (int) height, Pixmap.Format.RGBA8888);
         pixmap.setColor(0, 0, 0, 0);
         pixmap.fill();
         Texture texture = new Texture(pixmap);
         pixmap.dispose();
+
         Drawable drawable = new TextureRegionDrawable(new TextureRegion(texture));
         ImageButton boton = new ImageButton(drawable);
         boton.setBounds(x, y, width, height);
@@ -154,7 +193,9 @@ public class PantallaConfiguracion implements Screen {
     @Override public void pause() {}
     @Override public void resume() {}
     @Override public void hide() {}
-    @Override public void dispose() {
+
+    @Override
+    public void dispose() {
         fondo.dispose();
         stage.dispose();
     }

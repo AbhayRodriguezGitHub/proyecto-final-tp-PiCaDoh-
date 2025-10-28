@@ -21,8 +21,8 @@ import com.google.gson.JsonObject;
 
 import mijuego.picadoh.Principal;
 import mijuego.picadoh.cartas.CartaTropa;
-import mijuego.picadoh.efectos.CartaEfecto;
 import mijuego.picadoh.cartas.RegistroCartas;
+import mijuego.picadoh.efectos.CartaEfecto;
 import mijuego.picadoh.efectos.RegistroEfectos;
 
 import java.util.ArrayList;
@@ -31,13 +31,11 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * PantallaBatalla completa con soporte LAN:
- * - envía INVOKE / INVOKE_EFFECT al colocar cartas/efectos
- * - al presionar PLAY envía PLAY al servidor y espera REVEAL
- * - recibe REVEAL y, en hilo principal, crea instancias y ejecuta la fase de combate
- *
- * Esta clase contiene TODO el código de la pantalla de batalla (basada en tu versión original)
- * con las modificaciones necesarias para la sincronización LAN.
+ * Pantalla de batalla con sincronización LAN y reintentos de PLAY para evitar deadlocks.
+ * - INVOKE / INVOKE_EFFECT se envían al soltar cartas/efectos.
+ * - Al presionar PLAY se envía PLAY y se inicia reintento hasta recibir REVEAL.
+ * - Al recibir REVEAL se aplica lo revelado y se ejecuta la fase de combate.
+ * - Si no llega REVEAL tras N reintentos, se resuelve localmente (fallback offline).
  */
 public class PantallaBatalla implements Screen {
 
@@ -49,11 +47,19 @@ public class PantallaBatalla implements Screen {
     private Texture vida3Img;
     private Texture vida4Img;
 
-    // Cámara + Viewport para escalar correctamente todo
+    // Overlay “esperando rival” sobre el botón PLAY
+    private Texture esperaPlayImg;
+    private static final float ESPERA2_X = 880f;
+    private static final float ESPERA2_Y = 471f;
+    private static final float ESPERA2_W = 1067f - 880f; // 187
+    private static final float ESPERA2_H = 613f  - 471f; // 141
+
+    // Cámara + Viewport
     private final OrthographicCamera camera;
     private final Viewport viewport;
     private final Vector3 tmpUnproject = new Vector3();
 
+    // Iconos de vida parpadeo
     private static final float VIDA_IMG_X = 347f;
     private static final float VIDA_IMG_Y = 469f;
     private static final float VIDA_IMG_W = 1908f - 1670f;
@@ -74,7 +80,7 @@ public class PantallaBatalla implements Screen {
     private final List<CartaEfecto> mazoEfectosRestantes;
 
     private CartaTropa cartaSeleccionada;
-    private int cartaSeleccionadaIndex = -1; // índice en la mano de la carta seleccionada
+    private int cartaSeleccionadaIndex = -1;
     private int cartaHoverIndex = -1;
 
     private float cartaDragX = 0;
@@ -92,22 +98,25 @@ public class PantallaBatalla implements Screen {
     private CartaEfecto efectoEnRanuraJugador = null;
     private boolean efectoAplicadoEsteTurno = false;
 
-    // Si enemigo tiene efecto actualmente visible
     private CartaEfecto efectoEnRanuraEnemigo = null;
 
+    // Snapshot para revertir buff/debuff aplicados por efecto de turno
     private static class SnapshotStats {
         final CartaTropa tropa;
         final int deltaAtk;
         final int deltaDef;
         SnapshotStats(CartaTropa t, int deltaAtk, int deltaDef) {
-            this.tropa = t;
-            this.deltaAtk = deltaAtk;
-            this.deltaDef = deltaDef;
+            this.tropa = t; this.deltaAtk = deltaAtk; this.deltaDef = deltaDef;
         }
         void revertir() {
             if (tropa == null) return;
-            tropa.setAtk(Math.max(0, tropa.getAtk() - deltaAtk));
-            tropa.setDef(Math.max(0, tropa.getDef() - deltaDef));
+            // Se asume que CartaTropa tiene setAtaque/setDefensa
+            try {
+                tropa.setAtaque(Math.max(0, tropa.getAtaque() - deltaAtk));
+            } catch (Throwable ignored) {}
+            try {
+                tropa.setDefensa(Math.max(0, tropa.getDefensa() - deltaDef));
+            } catch (Throwable ignored) {}
         }
     }
     private final List<SnapshotStats> snapshotsEfectoTurno = new ArrayList<>();
@@ -128,6 +137,7 @@ public class PantallaBatalla implements Screen {
     private final ShapeRenderer shapeRenderer;
     private Ranura ranuraHover = null;
 
+    // Barras de vida
     private final int VIDA_BARRA_ANCHO = 153;
     private final int VIDA_BARRA_ALTO = 15;
     private final int VIDA_Y = 496;
@@ -144,11 +154,13 @@ public class PantallaBatalla implements Screen {
 
     private boolean mostrarBotonSiguiente = false;
 
+    // Botón PLAY/SIGUIENTE
     private final int BOTON_PLAY_X = 870;
     private final int BOTON_PLAY_Y = 430;
     private final int BOTON_PLAY_ANCHO = 205;
     private final int BOTON_PLAY_ALTO = 220;
 
+    // Turnos y niveles permitidos por turno
     private static final int MAX_TURNO = 22;
     private int turnoActual = 1;
 
@@ -172,6 +184,7 @@ public class PantallaBatalla implements Screen {
 
     private boolean partidaTerminada = false;
 
+    // Ranura de efectos (rectángulos en tablero)
     private static final int EFECTO_JUG_X1 = 812;
     private static final int EFECTO_JUG_X2 = 1108;
     private static final int EFECTO_JUG_Y1 = 8;
@@ -188,16 +201,22 @@ public class PantallaBatalla implements Screen {
     private static final int MAX_INVOC_TROPAS_TURNO = 2;
     private int invocacionesTropaEsteTurno = 0;
 
-    // --- Flags y estado LAN ---
-    private boolean esperandoReveal = false; // estamos esperando REVEAL del servidor
+    // --- Estado LAN / reintentos ---
+    private boolean esperandoReveal = false;      // esperando REVEAL del servidor
     private boolean clientListenerRegistered = false;
+    private boolean playEnviadoEsteTurno = false; // evita múltiples envíos por clics repetidos
+    private float tiempoDesdeEspera = 0f;         // tiempo acumulado desde que se empezó a esperar
+    private float tiempoHastaReintento = 0f;      // contador para siguiente reintento
+    private int reintentosRealizados = 0;
+    private static final int MAX_REINTENTOS_PLAY = 12; // ~12 reintentos
+    private static final float INTERVALO_REINTENTO = 1.0f; // cada 1 segundo
 
     public PantallaBatalla(Principal juego, ContextoBatalla contexto, List<CartaEfecto> efectosDisponibles) {
         this.juego = juego;
         this.batch = new SpriteBatch();
         this.shapeRenderer = new ShapeRenderer();
 
-        // Mundo virtual fijo 1920x1080; lo demás se ajusta con el viewport.
+        // Mundo virtual 1920x1080
         this.camera = new OrthographicCamera();
         this.viewport = new FitViewport(1920f, 1080f, camera);
         camera.position.set(960f, 540f, 0f);
@@ -208,15 +227,17 @@ public class PantallaBatalla implements Screen {
         vida2Img = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/VIDA2.png"));
         vida3Img = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/VIDA3.png"));
         vida4Img = new Texture(Gdx.files.absolute("lwjgl3/assets/campos/VIDA4.png"));
+        this.esperaPlayImg = new Texture(Gdx.files.absolute("lwjgl3/assets/lan/ESPERA2.png"));
+
         this.contexto = contexto;
         this.efectosDisponibles = efectosDisponibles;
 
         this.manoTropas = new ArrayList<>();
         this.manoEfectos = new ArrayList<>();
 
+        // Mano inicial: 3 tropas aleatorias
         List<CartaTropa> disponibles = new ArrayList<>(contexto.getTropasPropias());
         Collections.shuffle(disponibles);
-
         for (int i = 0; i < 3 && !disponibles.isEmpty() && manoTropas.size() < MAX_CARTAS_MANO; i++) {
             manoTropas.add(disponibles.remove(0));
         }
@@ -228,6 +249,7 @@ public class PantallaBatalla implements Screen {
         this.fuenteVida = new BitmapFont();
         this.layout = new GlyphLayout();
 
+        // Fuente para turno (grande)
         FreeTypeFontGenerator generator = new FreeTypeFontGenerator(Gdx.files.internal("lwjgl3/assets/fonts/arial.otf"));
         FreeTypeFontGenerator.FreeTypeFontParameter parameter = new FreeTypeFontGenerator.FreeTypeFontParameter();
         parameter.size = 48;
@@ -239,6 +261,7 @@ public class PantallaBatalla implements Screen {
 
         this.layoutTurno = new GlyphLayout();
 
+        // Fuente para niveles permitidos (mediana)
         FreeTypeFontGenerator genNiv = new FreeTypeFontGenerator(Gdx.files.internal("lwjgl3/assets/fonts/arial.otf"));
         FreeTypeFontGenerator.FreeTypeFontParameter pNiv = new FreeTypeFontGenerator.FreeTypeFontParameter();
         pNiv.size = 28;
@@ -248,21 +271,22 @@ public class PantallaBatalla implements Screen {
         this.fuenteNiveles.setColor(Color.WHITE);
         genNiv.dispose();
 
+        // Ranuras jugador (0..4) y enemigo (5..9)
         ranuras = new ArrayList<>();
-        // Las primeras 5 son del jugador (esEnemigo = false)
+        // Jugador
         ranuras.add(new Ranura(36, 254, 267, 180, false));
         ranuras.add(new Ranura(437, 254, 267, 180, false));
         ranuras.add(new Ranura(833, 254, 267, 180, false));
         ranuras.add(new Ranura(1229, 254, 267, 180, false));
         ranuras.add(new Ranura(1615, 254, 270, 180, false));
-
-        // Las siguientes 5 son del enemigo (esEnemigo = true)
+        // Enemigo
         ranuras.add(new Ranura(22, 645, 283, 183, true));
         ranuras.add(new Ranura(412, 645, 286, 183, true));
         ranuras.add(new Ranura(813, 645, 286, 183, true));
         ranuras.add(new Ranura(1213, 645, 282, 183, true));
         ranuras.add(new Ranura(1615, 645, 283, 183, true));
 
+        // Niveles permitidos por turno (1..22)
         nivelesPorTurno.add(List.of(1));
         nivelesPorTurno.add(List.of(1, 2));
         nivelesPorTurno.add(List.of(1, 2));
@@ -286,7 +310,7 @@ public class PantallaBatalla implements Screen {
         nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));
         nivelesPorTurno.add(List.of(1, 2, 3, 4, 5));
 
-        // Registrar input
+        // Input
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean keyDown(int keycode) {
@@ -308,7 +332,6 @@ public class PantallaBatalla implements Screen {
                     return true;
                 }
                 if (keycode == com.badlogic.gdx.Input.Keys.SPACE) {
-                    // Presionar espacio actúa como botón PLAY
                     onPlayButtonPressed();
                     return true;
                 }
@@ -317,7 +340,7 @@ public class PantallaBatalla implements Screen {
 
             private void unproj(int screenX, int screenY) {
                 tmpUnproject.set(screenX, screenY, 0f);
-                viewport.unproject(tmpUnproject); // → coords del mundo 1920×1080
+                viewport.unproject(tmpUnproject);
             }
 
             @Override
@@ -331,10 +354,11 @@ public class PantallaBatalla implements Screen {
                 if (wx >= BOTON_PLAY_X && wx <= BOTON_PLAY_X + BOTON_PLAY_ANCHO &&
                     wy >= BOTON_PLAY_Y && wy <= BOTON_PLAY_Y + BOTON_PLAY_ALTO) {
                     onPlayButtonPressed();
-                    System.out.println("[INPUT] Botón PLAY presionado → play/esperando");
+                    System.out.println("[INPUT] Botón PLAY presionado.");
                     return true;
                 }
 
+                // Efectos (mano derecha)
                 for (int i = 0; i < manoEfectos.size(); i++) {
                     float x = (EFECTOS_BORDE_DER - ANCHO_CARTA) - (ANCHO_CARTA + ESPACIO_CARTAS) * i;
                     float y = Y_CARTA_MANO_DERECHA;
@@ -350,13 +374,13 @@ public class PantallaBatalla implements Screen {
                     }
                 }
 
-                // Selección de tropa: guardamos índice para poder eliminar al invocar
+                // Tropas (mano inferior)
                 for (int i = 0; i < manoTropas.size(); i++) {
                     float x = TROPAS_X_INICIO + i * (ANCHO_CARTA + ESPACIO_CARTAS);
                     if (wx >= x && wx <= x + ANCHO_CARTA &&
                         wy >= Y_CARTA_MANO && wy <= Y_CARTA_MANO + ALTURA_CARTA + 30) {
                         cartaSeleccionada = manoTropas.get(i);
-                        cartaSeleccionadaIndex = i; // guardamos índice
+                        cartaSeleccionadaIndex = i;
                         cartaDragX = wx - ANCHO_CARTA / 2f;
                         cartaDragY = wy - ALTURA_CARTA / 2f;
                         arrastrando = true;
@@ -379,7 +403,6 @@ public class PantallaBatalla implements Screen {
                     cartaDragY = wy - ALTURA_CARTA / 2f;
 
                     ranuraHover = null;
-                    // Buscar ranura válida SOLO entre las ranuras del JUGADOR (primeras 5)
                     for (int idx = 0; idx < 5; idx++) {
                         Ranura r = ranuras.get(idx);
                         if (r.contiene((int) wx, (int) wy) && (r.getCarta() == null) && !r.esEnemigo()) {
@@ -392,10 +415,8 @@ public class PantallaBatalla implements Screen {
                 if (arrastrandoEfecto && cartaEfectoSeleccionada != null) {
                     efectoDragX = wx - ANCHO_CARTA / 2f;
                     efectoDragY = wy - ALTURA_CARTA / 2f;
-
-                    hoverRanuraEfectoJugador =
-                        wx >= EFECTO_JUG_X1 && wx <= EFECTO_JUG_X2 &&
-                            wy >= EFECTO_JUG_Y1 && wy <= EFECTO_JUG_Y2;
+                    hoverRanuraEfectoJugador = (wx >= EFECTO_JUG_X1 && wx <= EFECTO_JUG_X2 &&
+                        wy >= EFECTO_JUG_Y1 && wy <= EFECTO_JUG_Y2);
                 }
                 return true;
             }
@@ -409,60 +430,46 @@ public class PantallaBatalla implements Screen {
                 float wy = tmpUnproject.y;
 
                 if (arrastrando && cartaSeleccionada != null) {
-                    boolean invocado = false;
-                    // Intentamos invocar SOLO en las ranuras del JUGADOR (índices 0..4)
+                    // Invocar tropa en ranuras del jugador
                     for (int idx = 0; idx < 5; idx++) {
                         Ranura ranura = ranuras.get(idx);
                         if (ranura.contiene((int) wx, (int) wy) && ranura.getCarta() == null && !ranura.esEnemigo()) {
 
-                            if (!contexto.isInvocacionesIlimitadasEsteTurno()
-                                && invocacionesTropaEsteTurno >= MAX_INVOC_TROPAS_TURNO) {
-                                System.out.println("[INVOCACIÓN BLOQUEADA] Ya invocaste " + MAX_INVOC_TROPAS_TURNO + " tropas este turno.");
+                            if (!contexto.isInvocacionesIlimitadasEsteTurno() &&
+                                invocacionesTropaEsteTurno >= MAX_INVOC_TROPAS_TURNO) {
+                                System.out.println("[INVOCACIÓN] Límite por turno alcanzado.");
                                 break;
                             }
 
                             if (puedeInvocarPorNivel(cartaSeleccionada)) {
-                                // Asigna la carta a la ranura del jugador
                                 ranura.setCarta(cartaSeleccionada);
 
-                                // --- Eliminar la carta de la mano (USO ÚNICO) ---
-                                if (cartaSeleccionadaIndex >= 0 && cartaSeleccionadaIndex < manoTropas.size()) {
-                                    // si el objeto coincide, eliminar por índice
-                                    if (manoTropas.get(cartaSeleccionadaIndex) == cartaSeleccionada) {
-                                        manoTropas.remove(cartaSeleccionadaIndex);
-                                    } else {
-                                        // fallback: eliminar la instancia encontrada
-                                        manoTropas.remove(cartaSeleccionada);
-                                    }
+                                if (cartaSeleccionadaIndex >= 0 && cartaSeleccionadaIndex < manoTropas.size()
+                                    && manoTropas.get(cartaSeleccionadaIndex) == cartaSeleccionada) {
+                                    manoTropas.remove(cartaSeleccionadaIndex);
                                 } else {
-                                    // fallback: eliminar por objeto si existe
                                     manoTropas.remove(cartaSeleccionada);
                                 }
 
                                 invocacionesTropaEsteTurno++;
-                                System.out.println("[INVOCACIÓN] Tropas invocadas este turno: " + invocacionesTropaEsteTurno + "/" + MAX_INVOC_TROPAS_TURNO);
-                                invocado = true;
 
-                                // --- ENVÍO LAN: INVOKE (slot idx, className) ---
+                                // Enviar INVOKE
                                 try {
                                     if (juego.clienteLAN != null) {
                                         String className = cartaSeleccionada.getClass().getName();
                                         juego.clienteLAN.sendInvoke(idx, className);
-                                        System.out.println("[LAN-SENT] INVOKE -> slot=" + idx + " class=" + className);
+                                        System.out.println("[LAN-SENT] INVOKE slot=" + idx + " class=" + className);
                                     }
                                 } catch (Exception ex) {
                                     System.out.println("[LAN] Error al enviar INVOKE: " + ex.getMessage());
                                 }
-
                             } else {
-                                System.out.println("[INVOCACIÓN BLOQUEADA] No puedes invocar carta de nivel "
-                                    + cartaSeleccionada.getNivel() + " en el turno " + turnoActual);
+                                System.out.println("[INVOCACIÓN] Nivel no permitido para este turno.");
                             }
                             break;
                         }
                     }
 
-                    // reset selección siempre
                     cartaSeleccionada = null;
                     cartaSeleccionadaIndex = -1;
                     arrastrando = false;
@@ -470,20 +477,20 @@ public class PantallaBatalla implements Screen {
                 }
 
                 if (arrastrandoEfecto && cartaEfectoSeleccionada != null) {
-                    boolean invocado = false;
+                    boolean colocado = false;
                     if (wx >= EFECTO_JUG_X1 && wx <= EFECTO_JUG_X2 &&
                         wy >= EFECTO_JUG_Y1 && wy <= EFECTO_JUG_Y2 &&
                         efectoEnRanuraJugador == null) {
-                        efectoEnRanuraJugador = cartaEfectoSeleccionada;
-                        System.out.println("[EFECTO] Colocado efecto en ranura: " + efectoEnRanuraJugador.getNombre());
-                        invocado = true;
 
-                        // Envío LAN: INVOKE_EFFECT (notify server the effect placed)
+                        efectoEnRanuraJugador = cartaEfectoSeleccionada;
+                        colocado = true;
+
+                        // Enviar INVOKE_EFFECT
                         try {
                             if (juego.clienteLAN != null) {
                                 String className = efectoEnRanuraJugador.getClass().getName();
                                 juego.clienteLAN.sendInvokeEffect(className);
-                                System.out.println("[LAN-SENT] INVOKE_EFFECT -> class=" + className);
+                                System.out.println("[LAN-SENT] INVOKE_EFFECT class=" + className);
                             }
                         } catch (Exception ex) {
                             System.out.println("[LAN] Error al enviar INVOKE_EFFECT: " + ex.getMessage());
@@ -494,6 +501,7 @@ public class PantallaBatalla implements Screen {
                                 contexto.setTropaSeleccionada(null);
                                 efectoEnRanuraJugador.aplicarEfecto(contexto);
 
+                                // Limpiezas solicitadas por efectos instantáneos
                                 if (contexto.isPurgaPorNivelSolicitada()) {
                                     for (int i = 0; i < ranuras.size(); i++) {
                                         if (ranuras.get(i).getCarta() != null) {
@@ -504,7 +512,6 @@ public class PantallaBatalla implements Screen {
                                         }
                                     }
                                     contexto.limpiarPurgaPorNivelSolicitud();
-                                    System.out.println("[EFECTO] Purga por nivel aplicada.");
                                 }
 
                                 if (contexto.isLimpiarCampoSolicitado()) {
@@ -512,18 +519,16 @@ public class PantallaBatalla implements Screen {
                                         ranuras.get(i).setCarta(null);
                                     }
                                     contexto.setLimpiarCampoSolicitado(false);
-                                    System.out.println("[EFECTO] Limpieza total del campo aplicada.");
                                 }
 
                                 efectoAplicadoEsteTurno = true;
-                                System.out.println("[EFECTO] " + efectoEnRanuraJugador.getNombre() + " aplicado instantáneamente.");
                             } catch (Exception ex) {
                                 System.out.println("[EFECTO] Error en aplicación instantánea: " + ex.getMessage());
                             }
                         }
                     }
 
-                    if (!invocado) {
+                    if (!colocado) {
                         int idx = (indiceEfectoTomado >= 0 && indiceEfectoTomado <= manoEfectos.size())
                             ? indiceEfectoTomado : manoEfectos.size();
                         manoEfectos.add(idx, cartaEfectoSeleccionada);
@@ -574,39 +579,60 @@ public class PantallaBatalla implements Screen {
         });
     }
 
+    // ---------------------- LÓGICA PLAY/REVEAL ----------------------
+
     private void onPlayButtonPressed() {
-        // Si estamos en LAN (cliente conectado), no iniciar batalla localmente; avisar al servidor y esperar REVEAL.
-        boolean sent = false;
+        if (partidaTerminada || batallaEnCurso) return;
+
+        // Evita múltiples clics/duplicados
+        if (esperandoReveal) {
+            System.out.println("[PLAY] Ya esperando REVEAL. Ignorado.");
+            return;
+        }
+
+        boolean sent = enviarPlay();
+        if (!sent) {
+            // Sin LAN: modo offline
+            iniciarBatallaConSiguiente();
+        }
+    }
+
+    private boolean enviarPlay() {
         try {
             if (juego.clienteLAN != null) {
                 juego.clienteLAN.sendPlay();
                 esperandoReveal = true;
-                sent = true;
-                System.out.println("[CLIENTE-LAN] PLAY enviado. Esperando REVEAL del servidor...");
+                playEnviadoEsteTurno = true;
+                reintentosRealizados = 0;
+                tiempoDesdeEspera = 0f;
+                tiempoHastaReintento = INTERVALO_REINTENTO;
+
+                mostrarBotonSiguiente = false;
+                System.out.println("[CLIENTE-LAN] PLAY enviado. Esperando REVEAL...");
+                return true;
             }
         } catch (Exception ex) {
             System.out.println("[CLIENTE-LAN] Error al enviar PLAY: " + ex.getMessage());
         }
-
-        if (!sent) {
-            // modo offline: iniciar batalla localmente
-            iniciarBatallaConSiguiente();
-        } else {
-            // Mostrar "Esperando rival..." visualmente: puedes establecer un flag y dibujarlo en render()
-            mostrarBotonSiguiente = false; // no mostrar botón de ejecutar hasta REVEAL
-        }
+        return false;
     }
 
     private void iniciarBatallaConSiguiente() {
         if (!batallaEnCurso) {
+            // Limpieza de flags LAN antes de iniciar animación/combate
+            esperandoReveal = false;
+            playEnviadoEsteTurno = false;
+            reintentosRealizados = 0;
+            tiempoDesdeEspera = 0f;
+            tiempoHastaReintento = 0f;
+
             ejecutarBatalla();
             mostrarBotonSiguiente = true;
         }
     }
 
     private void ejecutarBatalla() {
-        System.out.println("[COMBATE] Iniciando animación de batalla...");
-
+        // Aplicar efecto en ranura del jugador si corresponde
         if (efectoEnRanuraJugador != null && !efectoAplicadoEsteTurno) {
             try {
                 snapshotsEfectoTurno.clear();
@@ -614,21 +640,18 @@ public class PantallaBatalla implements Screen {
                     CartaTropa t = ranuras.get(i).getCarta();
                     if (t == null) continue;
 
-                    int atkAntes = t.getAtk();
-                    int defAntes = t.getDef();
+                    int atkAntes = t.getAtaque();
+                    int defAntes = t.getDefensa();
 
                     contexto.setTropaSeleccionada(t);
                     efectoEnRanuraJugador.aplicarEfecto(contexto);
 
-                    int deltaAtk = t.getAtk() - atkAntes;
-                    int deltaDef = t.getDef() - defAntes;
+                    int deltaAtk = t.getAtaque() - atkAntes;
+                    int deltaDef = t.getDefensa() - defAntes;
 
                     snapshotsEfectoTurno.add(new SnapshotStats(t, deltaAtk, deltaDef));
                 }
                 contexto.setTropaSeleccionada(null);
-
-                System.out.println("[EFECTO] Aplicado a " + snapshotsEfectoTurno.size() +
-                    " tropas: " + efectoEnRanuraJugador.getNombre());
             } catch (Exception e) {
                 System.out.println("[EFECTO] Error aplicando efecto: " + e.getMessage());
             }
@@ -638,6 +661,7 @@ public class PantallaBatalla implements Screen {
         ranuraActual = 0;
         tiempoHighlight = 0f;
         batallaEnCurso = true;
+        System.out.println("[COMBATE] Animación iniciada.");
     }
 
     private void procesarAtaqueRanura(int i) {
@@ -660,7 +684,6 @@ public class PantallaBatalla implements Screen {
                     int dañoRestante = -nuevaDefEnemigo;
                     contexto.restarVidaEnemiga(dañoRestante);
                     ranuraEnemigo.setCarta(null);
-                    System.out.println("[COMBATE] Carta enemiga destruida en ranura " + (i + 1));
                 } else {
                     cartaEnemigo.setDefensa(nuevaDefEnemigo);
                 }
@@ -669,37 +692,29 @@ public class PantallaBatalla implements Screen {
                     int dañoRestante = -nuevaDefJugador;
                     if (dañoRestante > 0) contexto.restarVidaPropia(dañoRestante);
                     ranuraJugador.setCarta(null);
-                    System.out.println("[COMBATE] Carta del jugador destruida en ranura " + (i + 1));
                 } else {
                     cartaJugador.setDefensa(nuevaDefJugador);
                 }
 
             } else {
                 contexto.restarVidaEnemiga(cartaJugador.getAtaque());
-                System.out.println("[COMBATE] Ataque directo al enemigo por " + cartaJugador.getAtaque() + " desde ranura " + (i + 1));
             }
         }
 
         if (ranuraEnemigo.getCarta() != null && ranuraJugador.getCarta() == null) {
             int dano = contexto.isAtaquesEnemigosAnuladosEsteTurno() ? 0 : ranuraEnemigo.getCarta().getAtaque();
-            if (dano > 0) {
-                contexto.restarVidaPropia(dano);
-                System.out.println("[COMBATE] Ataque directo al jugador por " + dano + " desde ranura enemiga " + (i + 1));
-            } else {
-                System.out.println("[COMBATE] Ataque enemigo anulado en ranura " + (i + 1));
-            }
+            if (dano > 0) contexto.restarVidaPropia(dano);
         }
 
         verificarCondicionYTransicion();
     }
 
+    // ---------------------- Ciclo de vida Screen ----------------------
+
     @Override
     public void show() {
-        // reproducir música
         juego.detenerMusicaSeleccion();
         juego.reproducirMusicaBatalla();
-
-        // registrar listener LAN (si aplica)
         registerClientListenerIfNeeded();
     }
 
@@ -707,7 +722,35 @@ public class PantallaBatalla implements Screen {
     public void render(float delta) {
         if (partidaTerminada) return;
 
-        // Aplicar viewport y matrices de proyección antes de dibujar
+        // Esperando REVEAL: reintentos + Fallback para no quedar colgados
+        if (esperandoReveal && juego.clienteLAN != null && !batallaEnCurso) {
+            tiempoDesdeEspera += delta;
+            tiempoHastaReintento -= delta;
+
+            if (tiempoHastaReintento <= 0f && reintentosRealizados < MAX_REINTENTOS_PLAY) {
+                try {
+                    juego.clienteLAN.sendPlay();
+                    reintentosRealizados++;
+                    tiempoHastaReintento = INTERVALO_REINTENTO;
+                    System.out.println("[CLIENTE-LAN] Reenvío PLAY (" + reintentosRealizados + "/" + MAX_REINTENTOS_PLAY + ")");
+                } catch (Exception ex) {
+                    System.out.println("[CLIENTE-LAN] Error reenvío PLAY: " + ex.getMessage());
+                }
+            }
+
+            // Fallback: si no llega REVEAL después de X reintentos, resolvemos localmente
+            if (reintentosRealizados >= MAX_REINTENTOS_PLAY) {
+                System.out.println("[CLIENTE-LAN] Timeout de REVEAL: forzando resolución local.");
+                esperandoReveal = false;
+                reintentosRealizados = 0;
+                tiempoDesdeEspera = 0f;
+                tiempoHastaReintento = 0f;
+                if (!batallaEnCurso) {
+                    iniciarBatallaConSiguiente();
+                }
+            }
+        }
+
         viewport.apply();
         batch.setProjectionMatrix(camera.combined);
         shapeRenderer.setProjectionMatrix(camera.combined);
@@ -721,12 +764,14 @@ public class PantallaBatalla implements Screen {
         batch.begin();
         batch.draw(fondo, 0, 0, 1920, 1080);
 
+        // Campo: ranuras
         for (Ranura ranura : ranuras) {
             if (ranura.getCarta() != null) {
                 batch.draw(ranura.getCarta().getImagen(), ranura.getX(), ranura.getY(), ranura.getAncho(), ranura.getAlto());
             }
         }
 
+        // Mano de tropas (abajo)
         for (int i = 0; i < manoTropas.size(); i++) {
             CartaTropa carta = manoTropas.get(i);
             if (carta == cartaSeleccionada) continue;
@@ -740,14 +785,14 @@ public class PantallaBatalla implements Screen {
             batch.draw(cartaSeleccionada.getImagen(), cartaDragX, cartaDragY, ANCHO_CARTA, ALTURA_CARTA);
         }
 
+        // Mano de efectos (derecha)
         dibujarManoEfectos();
 
+        // Ranura efecto jugador/enemigo
         if (efectoEnRanuraJugador != null) {
             batch.draw(efectoEnRanuraJugador.getImagen(), EFECTO_JUG_X1, EFECTO_JUG_Y1, EFECTO_FULL_W, EFECTO_FULL_H);
         }
-
         if (efectoEnRanuraEnemigo != null) {
-            // mostrar efecto enemigo en la parte superior (zona enemiga)
             batch.draw(efectoEnRanuraEnemigo.getImagen(), EFECTO_ENE_X1, EFECTO_ENE_Y1, EFECTO_FULL_W, EFECTO_FULL_H);
         }
 
@@ -755,22 +800,17 @@ public class PantallaBatalla implements Screen {
             batch.draw(cartaEfectoSeleccionada.getImagen(), efectoDragX, efectoDragY, ANCHO_CARTA, ALTURA_CARTA);
         }
 
+        // Botón SIGUIENTE (en modo offline o tras combate)
         if (mostrarBotonSiguiente) {
             batch.draw(imgSiguiente, BOTON_PLAY_X, BOTON_PLAY_Y, BOTON_PLAY_ANCHO, BOTON_PLAY_ALTO);
         }
 
-        // si estamos esperando REVEAL, dibujar mensaje
-        if (esperandoReveal) {
-            BitmapFont f = new BitmapFont();
-            GlyphLayout g = new GlyphLayout();
-            String s = "Esperando rival...";
-            g.setText(f, s);
-            f.setColor(Color.WHITE);
-            float sx = 960 - g.width / 2f;
-            float sy = 540 + g.height / 2f;
-            f.draw(batch, g, sx, sy);
+        // Overlay "esperando" cuando se envió PLAY y aún no llegó REVEAL
+        if (esperandoReveal && esperaPlayImg != null) {
+            batch.draw(esperaPlayImg, ESPERA2_X, ESPERA2_Y, ESPERA2_W, ESPERA2_H);
         }
 
+        // Texto de turno
         String textoTurno = String.valueOf(turnoActual);
         layoutTurno.setText(fuenteTurno, textoTurno);
         float textX = TURNO_X + (TURNO_ANCHO - layoutTurno.width) / 2f;
@@ -778,8 +818,10 @@ public class PantallaBatalla implements Screen {
         fuenteTurno.setColor(Color.BLACK);
         fuenteTurno.draw(batch, layoutTurno, textX, textY);
 
+        // Niveles permitidos
         dibujarNivelesDisponibles();
 
+        // Iconos de vida (parpadeo)
         if (vida2Img != null && vida3Img != null && vida4Img != null) {
             Gdx.gl.glEnable(GL20.GL_BLEND);
 
@@ -804,8 +846,10 @@ public class PantallaBatalla implements Screen {
 
         batch.end();
 
+        // Barras de vida + números
         dibujarBarraVida();
 
+        // Resaltado de ranura hover al arrastrar carta
         if (ranuraHover != null) {
             Gdx.gl.glEnable(GL20.GL_BLEND);
             shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
@@ -815,6 +859,7 @@ public class PantallaBatalla implements Screen {
             Gdx.gl.glDisable(GL20.GL_BLEND);
         }
 
+        // Resaltado de ranura de efecto al arrastrar efecto
         if (arrastrandoEfecto && hoverRanuraEfectoJugador) {
             Gdx.gl.glEnable(GL20.GL_BLEND);
             shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
@@ -824,6 +869,7 @@ public class PantallaBatalla implements Screen {
             Gdx.gl.glDisable(GL20.GL_BLEND);
         }
 
+        // Fase de combate: highlight por columnas + resolución por columnas
         if (batallaEnCurso) {
             tiempoHighlight += delta;
             if (tiempoHighlight >= DURACION_HIGHLIGHT) {
@@ -836,20 +882,22 @@ public class PantallaBatalla implements Screen {
                     mostrarBotonSiguiente = false;
                     ranuraActual = -1;
 
+                    // Revertir buffs temporales aplicados por efecto de turno
                     if (!snapshotsEfectoTurno.isEmpty()) {
                         for (SnapshotStats s : snapshotsEfectoTurno) s.revertir();
                         snapshotsEfectoTurno.clear();
                     }
 
+                    // Revertir flags de efecto de ContextoBatalla
                     contexto.revertirEfectosTurno();
 
                     if (!contexto.isInvocacionesIlimitadasEsteTurno()
                         && invocacionesTropaEsteTurno >= MAX_INVOC_TROPAS_TURNO) {
-                        System.out.println("[INVOCACIÓN BLOQUEADA] Límite de invocaciones alcanzado.");
+                        System.out.println("[INVOCACIÓN] Límite de invocaciones alcanzado.");
                     }
 
+                    // Limpiar ranura de efecto propio si era de 1 turno
                     if (efectoEnRanuraJugador != null) {
-                        System.out.println("[EFECTO] Finaliza duración del efecto: " + efectoEnRanuraJugador.getNombre());
                         efectoEnRanuraJugador = null;
                         efectoAplicadoEsteTurno = false;
                     }
@@ -862,6 +910,7 @@ public class PantallaBatalla implements Screen {
                 }
             }
 
+            // Pintar highlight columna actual
             Gdx.gl.glEnable(GL20.GL_BLEND);
             shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
             shapeRenderer.setColor(new Color(1f, 1f, 0f, 0.3f));
@@ -890,12 +939,17 @@ public class PantallaBatalla implements Screen {
         if (turnoActual < MAX_TURNO) {
             turnoActual++;
             invocacionesTropaEsteTurno = 0;
-            System.out.println("[TURNO] Avanzando al turno " + turnoActual);
+
+            // Reset flags de turno LAN
+            esperandoReveal = false;
+            playEnviadoEsteTurno = false;
+            reintentosRealizados = 0;
+            tiempoDesdeEspera = 0f;
+            tiempoHastaReintento = 0f;
 
             otorgarCartasPorTurno();
             verificarCondicionYTransicion();
         } else {
-            System.out.println("[TURNO] Ya estamos en el turno final (" + turnoActual + "), no se avanza ni se roban cartas.");
             verificarCondicionYTransicion();
         }
     }
@@ -907,21 +961,11 @@ public class PantallaBatalla implements Screen {
         if (turnoActual % 3 == 0 && !mazoEfectosRestantes.isEmpty() && manoEfectos.size() < MAX_CARTAS_MANO) {
             manoEfectos.add(mazoEfectosRestantes.remove(0));
         }
-
-        System.out.println("[ROBO] Turno " + turnoActual + " -> Tropa? " +
-            manoTropas.size() + "/" + MAX_CARTAS_MANO + " | Efectos " +
-            manoEfectos.size() + "/" + MAX_CARTAS_MANO +
-            " | Tropas restantes: " + mazoTropasRestantes.size() +
-            " | Efectos restantes: " + mazoEfectosRestantes.size());
     }
 
     private boolean puedeInvocarPorNivel(CartaTropa carta) {
-        if (contexto.isInvocacionLibreEsteTurno()) {
-            return true;
-        }
-        if (turnoActual < 1 || turnoActual > nivelesPorTurno.size()) {
-            return false;
-        }
+        if (contexto.isInvocacionLibreEsteTurno()) return true;
+        if (turnoActual < 1 || turnoActual > nivelesPorTurno.size()) return false;
         List<Integer> nivelesPermitidos = nivelesPorTurno.get(turnoActual - 1);
         return nivelesPermitidos.contains(carta.getNivel());
     }
@@ -934,7 +978,6 @@ public class PantallaBatalla implements Screen {
 
         if (vidaEnemiga <= 0 && vidaPropia > 0) {
             partidaTerminada = true;
-            System.out.println("[PARTIDA] VICTORIA detectada - cambio a PantallaVictoria");
             juego.reproducirMusicaVictoria();
             juego.setScreen(new PantallaVictoria(juego));
             return;
@@ -942,7 +985,6 @@ public class PantallaBatalla implements Screen {
 
         if (vidaPropia <= 0 && vidaEnemiga > 0) {
             partidaTerminada = true;
-            System.out.println("[PARTIDA] DERROTA detectada - cambio a PantallaDerrota");
             juego.reproducirMusicaDerrota();
             juego.setScreen(new PantallaDerrota(juego));
             return;
@@ -950,7 +992,6 @@ public class PantallaBatalla implements Screen {
 
         if (vidaEnemiga <= 0 && vidaPropia <= 0) {
             partidaTerminada = true;
-            System.out.println("[PARTIDA] Ambos a 0 simultáneamente: aplicando regla -> DERROTA");
             juego.reproducirMusicaDerrota();
             juego.setScreen(new PantallaDerrota(juego));
         }
@@ -970,10 +1011,8 @@ public class PantallaBatalla implements Screen {
         String texto = sb.toString();
 
         layoutNiveles.setText(fuenteNiveles, texto);
-
         float textX = AREA_NIVELES_X + (AREA_NIVELES_WIDTH - layoutNiveles.width) / 2f;
         float textY = AREA_NIVELES_Y + (AREA_NIVELES_HEIGHT + layoutNiveles.height) / 2f;
-
         fuenteNiveles.setColor(Color.WHITE);
         fuenteNiveles.draw(batch, layoutNiveles, textX, textY);
     }
@@ -981,12 +1020,14 @@ public class PantallaBatalla implements Screen {
     private void dibujarBarraVida() {
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
+        // Barra jugador (negro = fondo / blanco = daño recibido)
         shapeRenderer.setColor(Color.BLACK);
         shapeRenderer.rect(VIDA_X_JUGADOR, VIDA_Y, VIDA_BARRA_ANCHO, VIDA_BARRA_ALTO);
         shapeRenderer.setColor(Color.WHITE);
         float anchoPerdidoJugador = VIDA_BARRA_ANCHO * (1 - (float) contexto.getVidaPropia() / contexto.getVidaMaxima());
         shapeRenderer.rect(VIDA_X_JUGADOR, VIDA_Y, anchoPerdidoJugador, VIDA_BARRA_ALTO);
 
+        // Barra enemigo
         shapeRenderer.setColor(Color.BLACK);
         shapeRenderer.rect(VIDA_X_ENEMIGO, VIDA_Y, VIDA_BARRA_ANCHO, VIDA_BARRA_ALTO);
         shapeRenderer.setColor(Color.WHITE);
@@ -1018,9 +1059,7 @@ public class PantallaBatalla implements Screen {
         fuenteVida.draw(batch, layout, textX, textY);
     }
 
-    @Override public void resize(int width, int height) {
-        viewport.update(width, height, true); // mantiene centrado el mundo 1920×1080
-    }
+    @Override public void resize(int width, int height) { viewport.update(width, height, true); }
     @Override public void pause() {}
     @Override public void resume() {}
     @Override public void hide() {}
@@ -1037,6 +1076,7 @@ public class PantallaBatalla implements Screen {
         if (vida2Img != null) vida2Img.dispose();
         if (vida3Img != null) vida3Img.dispose();
         if (vida4Img != null) vida4Img.dispose();
+        if (esperaPlayImg != null) esperaPlayImg.dispose();
 
         for (CartaTropa c : manoTropas) if (c != null) c.dispose();
         for (CartaTropa c : mazoTropasRestantes) if (c != null) c.dispose();
@@ -1044,46 +1084,7 @@ public class PantallaBatalla implements Screen {
         for (CartaEfecto e : mazoEfectosRestantes) if (e != null) e.dispose();
     }
 
-    public ContextoBatalla getContexto() {
-        return contexto;
-    }
-
-    public List<CartaEfecto> getEfectosDisponibles() {
-        return efectosDisponibles;
-    }
-
-    private void evaluarFinalPorVidaTrasUltimoTurno() {
-        if (partidaTerminada) return;
-
-        int vidaPropia = contexto.getVidaPropia();
-        int vidaEnemiga = contexto.getVidaEnemiga();
-
-        if (vidaPropia <= 0 || vidaEnemiga <= 0) {
-            verificarCondicionYTransicion();
-            return;
-        }
-
-        if (vidaPropia > vidaEnemiga) {
-            partidaTerminada = true;
-            System.out.println("[PARTIDA] Fin de turno 22: gana el JUGADOR por tener más vida (" + vidaPropia + " > " + vidaEnemiga + ")");
-            juego.reproducirMusicaVictoria();
-            juego.setScreen(new PantallaVictoria(juego));
-        } else if (vidaPropia < vidaEnemiga) {
-            partidaTerminada = true;
-            System.out.println("[PARTIDA] Fin de turno 22: gana el ENEMIGO por tener más vida (" + vidaEnemiga + " > " + vidaPropia + ")");
-            juego.reproducirMusicaDerrota();
-            juego.setScreen(new PantallaDerrota(juego));
-        } else {
-            partidaTerminada = true;
-            System.out.println("[PARTIDA] Fin de turno 22: empate perfecto de vida -> PANTALLA EMPATE");
-            juego.reproducirMusicaEmpate();
-            juego.setScreen(new PantallaEmpate(juego));
-        }
-    }
-
-    // ------------------------------------------------------------
-    // ----------   FUNCIONES LAN / REVEAL / INVOKE ETC   ----------
-    // ------------------------------------------------------------
+    // ----------------- LAN: Listener y aplicación de REVEAL -----------------
 
     private void registerClientListenerIfNeeded() {
         if (clientListenerRegistered) return;
@@ -1092,6 +1093,7 @@ public class PantallaBatalla implements Screen {
         juego.clienteLAN.setOnMessage(json -> {
             String type = null;
             try { type = json.get("type").getAsString(); } catch (Exception ignored) {}
+            if (type != null) type = type.trim().toUpperCase();
 
             if ("MATCHED".equals(type)) {
                 System.out.println("[LAN-RECV] " + json.toString());
@@ -1099,48 +1101,48 @@ public class PantallaBatalla implements Screen {
             }
 
             if ("REVEAL".equals(type)) {
-                // Important: create textures/instances on main thread
+                // Entramos al hilo de render de LibGDX
                 Gdx.app.postRunnable(() -> {
                     System.out.println("[LAN-RECV] REVEAL: " + json.toString());
 
-                    // aplicar playerInvokes (propias)
-                    if (json.has("playerInvokes")) {
-                        JsonArray arr = json.getAsJsonArray("playerInvokes");
-                        applyPlayerInvokesFromJsonArray(arr);
-                    }
-                    // aplicar enemyInvokes
-                    if (json.has("enemyInvokes")) {
-                        JsonArray arr = json.getAsJsonArray("enemyInvokes");
-                        applyEnemyInvokesFromJsonArray(arr);
-                    }
-                    // efectos propios (revelados)
-                    if (json.has("playerEffectInvokes")) {
-                        JsonArray arr = json.getAsJsonArray("playerEffectInvokes");
-                        applyPlayerEffectInvokesFromJsonArray(arr);
-                    }
-                    // efectos enemigos (revelados)
-                    if (json.has("enemyEffectInvokes")) {
-                        JsonArray arr = json.getAsJsonArray("enemyEffectInvokes");
-                        applyEnemyEffectInvokesFromJsonArray(arr);
+                    try {
+                        if (json.has("playerInvokes")) {
+                            applyPlayerInvokesFromJsonArray(json.getAsJsonArray("playerInvokes"));
+                        }
+                        if (json.has("enemyInvokes")) {
+                            applyEnemyInvokesFromJsonArray(json.getAsJsonArray("enemyInvokes"));
+                        }
+                        if (json.has("playerEffectInvokes")) {
+                            applyPlayerEffectInvokesFromJsonArray(json.getAsJsonArray("playerEffectInvokes"));
+                        }
+                        if (json.has("enemyEffectInvokes")) {
+                            applyEnemyEffectInvokesFromJsonArray(json.getAsJsonArray("enemyEffectInvokes"));
+                        }
+                    } catch (Exception e) {
+                        System.out.println("[LAN-RECV] Error aplicando REVEAL: " + e.getMessage());
                     }
 
-                    // ya recibimos REVEAL: dejar de esperar y ejecutar fase de batalla localmente
+                    // Limpia espera y ejecuta combate (si aún no se ejecutó por fallback)
                     esperandoReveal = false;
-                    // Ejecutar batalla localmente ahora que el estado fue revelado
-                    iniciarBatallaConSiguiente();
+                    reintentosRealizados = 0;
+                    tiempoDesdeEspera = 0f;
+                    tiempoHastaReintento = 0f;
+
+                    if (!batallaEnCurso && !partidaTerminada) {
+                        iniciarBatallaConSiguiente();
+                    }
                 });
+                return;
             }
 
             if ("OPPONENT_DISCONNECTED".equals(type)) {
                 System.out.println("[CLIENTE-LAN] Rival desconectado.");
-                // podrías manejarlo (volver al menu, etc.)
             }
         });
 
         clientListenerRegistered = true;
     }
 
-    // Aplica los invokes del propio jugador (se esperan ranuras 0..4)
     private void applyPlayerInvokesFromJsonArray(JsonArray arr) {
         if (arr == null) return;
         for (JsonElement e : arr) {
@@ -1152,7 +1154,7 @@ public class PantallaBatalla implements Screen {
                     CartaTropa instancia = createTropaInstanceByName(cls);
                     if (instancia != null) {
                         ranuras.get(slot).setCarta(instancia);
-                        System.out.println("[LAN-APPLY] player invoke applied slot=" + slot + " cls=" + cls);
+                        System.out.println("[LAN-APPLY] player invoke slot=" + slot + " cls=" + cls);
                     }
                 }
             } catch (Exception ex) {
@@ -1161,7 +1163,6 @@ public class PantallaBatalla implements Screen {
         }
     }
 
-    // Aplica invokes enemigas (slot en JSON 0..4 -> mapeo a 5..9)
     private void applyEnemyInvokesFromJsonArray(JsonArray arr) {
         if (arr == null) return;
         for (JsonElement e : arr) {
@@ -1174,7 +1175,7 @@ public class PantallaBatalla implements Screen {
                     CartaTropa instancia = createTropaInstanceByName(cls);
                     if (instancia != null) {
                         ranuras.get(enemyIndex).setCarta(instancia);
-                        System.out.println("[LAN-APPLY] enemy invoke applied enemySlot=" + enemyIndex + " cls=" + cls);
+                        System.out.println("[LAN-APPLY] enemy invoke enemySlot=" + enemyIndex + " cls=" + cls);
                     }
                 }
             } catch (Exception ex) {
@@ -1183,7 +1184,6 @@ public class PantallaBatalla implements Screen {
         }
     }
 
-    // Aplicar efectos propios (se muestran en la zona del jugador)
     private void applyPlayerEffectInvokesFromJsonArray(JsonArray arr) {
         if (arr == null) return;
         for (JsonElement e : arr) {
@@ -1194,7 +1194,7 @@ public class PantallaBatalla implements Screen {
                     CartaEfecto efecto = createEfectoInstanceByName(cls);
                     if (efecto != null) {
                         efectoEnRanuraJugador = efecto;
-                        System.out.println("[LAN-APPLY] player effect applied: " + cls);
+                        System.out.println("[LAN-APPLY] player effect " + cls);
                     }
                 }
             } catch (Exception ex) {
@@ -1203,7 +1203,6 @@ public class PantallaBatalla implements Screen {
         }
     }
 
-    // Aplicar efectos enemigos (se muestran en la zona enemiga y aplican a sus tropas si corresponde)
     private void applyEnemyEffectInvokesFromJsonArray(JsonArray arr) {
         if (arr == null) return;
         for (JsonElement e : arr) {
@@ -1213,22 +1212,14 @@ public class PantallaBatalla implements Screen {
                 if (cls != null) {
                     CartaEfecto efecto = createEfectoInstanceByName(cls);
                     if (efecto != null) {
-                        efectoEnRanuraEnemigo = efecto;
-                        System.out.println("[LAN-APPLY] enemy effect applied (shown): " + cls);
+                        // Evita re-aplicaciones: sólo setea si no hay uno ya colocado
+                        if (efectoEnRanuraEnemigo == null) {
+                            efectoEnRanuraEnemigo = efecto;
+                            System.out.println("[LAN-APPLY] enemy effect " + cls);
 
-                        // Opcional: aplicar efecto en las tropas enemigas en contexto para que se note en la batalla
-                        // (contexto.tomar la tropa y aplicar efecto)
-                        try {
-                            for (int i = 5; i < 10; i++) {
-                                CartaTropa t = ranuras.get(i).getCarta();
-                                if (t != null) {
-                                    contexto.setTropaSeleccionada(t);
-                                    efecto.aplicarEfecto(contexto);
-                                }
+                            if (efecto.esInstantaneo()) {
+                                aplicarEfectoEnemigoInstantaneo(efecto);
                             }
-                            contexto.setTropaSeleccionada(null);
-                        } catch (Exception ex) {
-                            System.out.println("[LAN-ERR] applyEnemyEffectInvokes application: " + ex.getMessage());
                         }
                     }
                 }
@@ -1238,10 +1229,23 @@ public class PantallaBatalla implements Screen {
         }
     }
 
-    // Crea una instancia de tropa a partir del nombre. Se asume que se invoca en hilo principal.
+    private void aplicarEfectoEnemigoInstantaneo(CartaEfecto efecto) {
+        try {
+            for (int i = 5; i < 10; i++) {
+                CartaTropa t = ranuras.get(i).getCarta();
+                if (t != null) {
+                    contexto.setTropaSeleccionada(t);
+                    efecto.aplicarEfecto(contexto);
+                }
+            }
+            contexto.setTropaSeleccionada(null);
+        } catch (Exception ex) {
+            System.out.println("[LAN-ERR] aplicarEfectoEnemigoInstantaneo: " + ex.getMessage());
+        }
+    }
+
     private CartaTropa createTropaInstanceByName(String name) {
         if (name == null) return null;
-        // 1) intentar Class.forName
         try {
             Class<?> c = Class.forName(name);
             if (CartaTropa.class.isAssignableFrom(c)) {
@@ -1251,7 +1255,6 @@ public class PantallaBatalla implements Screen {
             }
         } catch (Throwable ignored) {}
 
-        // 2) intentar registro por nombre/simple
         try {
             Optional<CartaTropa> opt = RegistroCartas.crearPorNombre(name);
             if (opt.isPresent()) return opt.get();
@@ -1279,5 +1282,31 @@ public class PantallaBatalla implements Screen {
 
         System.out.println("[LAN] No se pudo crear efecto: " + name);
         return null;
+    }
+
+    /**
+     * Evalúa el resultado de la partida cuando se llega al último turno (MAX_TURNO)
+     * y ninguno de los dos jugadores ha muerto todavía.
+     */
+    private void evaluarFinalPorVidaTrasUltimoTurno() {
+        int vidaPropia = contexto.getVidaPropia();
+        int vidaEnemiga = contexto.getVidaEnemiga();
+
+        if (vidaPropia > vidaEnemiga) {
+            partidaTerminada = true;
+            juego.reproducirMusicaVictoria();
+            juego.setScreen(new PantallaVictoria(juego));
+            System.out.println("[FIN] Victoria por mayor vida tras el último turno.");
+        } else if (vidaEnemiga > vidaPropia) {
+            partidaTerminada = true;
+            juego.reproducirMusicaDerrota();
+            juego.setScreen(new PantallaDerrota(juego));
+            System.out.println("[FIN] Derrota por menor vida tras el último turno.");
+        } else {
+            partidaTerminada = true;
+            juego.reproducirMusicaDerrota();
+            juego.setScreen(new PantallaDerrota(juego));
+            System.out.println("[FIN] Empate: ambos con la misma vida.");
+        }
     }
 }

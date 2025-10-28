@@ -42,7 +42,8 @@ public class Lwjgl3Launcher {
         configuration.setForegroundFPS(Lwjgl3ApplicationConfiguration.getDisplayMode().refreshRate + 1);
 
         // Establece el tamaño por defecto de la ventana
-        configuration.setWindowedMode(1920, 1080);
+        configuration.setFullscreenMode(Lwjgl3ApplicationConfiguration.getDisplayMode());
+
 
         // Intentamos cargar iconos solo si existen y son legibles.
         // Rutas probables (IDE y paquete). Ajustá si las tenés en otro lugar.
@@ -89,10 +90,6 @@ public class Lwjgl3Launcher {
         } else {
             System.out.println("[ICON] No se encontraron iconos válidos. Se usará el icono por defecto.");
         }
-
-        // NOTA: arrancamos en modo ventana por defecto. Si querés fullscreen por defecto,
-        // descomenta y configura la siguiente línea:
-        // configuration.setFullscreenMode(Lwjgl3ApplicationConfiguration.getDisplayMode());
 
         return configuration;
     }

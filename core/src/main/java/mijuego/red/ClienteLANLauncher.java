@@ -28,8 +28,12 @@ public class ClienteLANLauncher {
 
         ClienteLAN cliente = new ClienteLAN(host, port);
         boolean ok = cliente.connect();
-        if (!ok) {
-            System.err.println("[Launcher] No se pudo conectar al servidor " + host + ":" + port);
+            cliente.joinQueue();
+        if (ok) {
+
+
+
+        System.err.println("[Launcher] No se pudo conectar al servidor " + host + ":" + port);
             return;
         }
 

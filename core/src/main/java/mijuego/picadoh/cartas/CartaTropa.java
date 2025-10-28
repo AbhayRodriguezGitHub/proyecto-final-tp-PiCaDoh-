@@ -10,10 +10,10 @@ public abstract class CartaTropa {
     protected Texture imagen;
     protected boolean puedeAtacarDosVeces = false;
 
-    // NUEVO ATRIBUTO: Nivel de la carta (1 a 5)
+    // Nivel de la carta (1 a 5)
     protected int nivel;
 
-    // NUEVO ATRIBUTO: Usos restantes para invocar
+    // Usos restantes para invocar (modo desarrollo por defecto)
     private int usosRestantes;
 
     /**
@@ -26,74 +26,47 @@ public abstract class CartaTropa {
      */
     public CartaTropa(String nombre, int atk, int def, String rutaImagen, int nivel) {
         this.nombre = nombre;
-        this.atk = atk;
-        this.def = def;
+        this.atk = Math.max(0, atk);
+        this.def = Math.max(0, def);
         this.imagen = new Texture(Gdx.files.absolute(rutaImagen));
         this.nivel = nivel;
         this.usosRestantes = 2; // por defecto 2 usos para invocar en modo desarrollo
     }
 
-    public String getNombre() {
-        return nombre;
-    }
+    // ---------- Getters básicos ----------
+    public String getNombre() { return nombre; }
+    public int getAtk() { return atk; }
+    public int getDef() { return def; }
+    public Texture getImagen() { return imagen; }
+    public boolean puedeAtacarDosVeces() { return puedeAtacarDosVeces; }
 
-    public int getAtk() {
-        return atk;
-    }
-
-    public int getDef() {
-        return def;
-    }
-
-    public Texture getImagen() {
-        return imagen;
-    }
-
-    public boolean puedeAtacarDosVeces() {
-        return puedeAtacarDosVeces;
-    }
-
-    public void setAtk(int atk) {
-        this.atk = atk;
-    }
-
-    public void setDef(int def) {
-        this.def = def;
-    }
-
+    // ---------- Setters base (con clamp a >= 0) ----------
+    public void setAtk(int atk) { this.atk = Math.max(0, atk); }
+    public void setDef(int def) { this.def = Math.max(0, def); }
     public void setPuedeAtacarDosVeces(boolean puedeAtacarDosVeces) {
         this.puedeAtacarDosVeces = puedeAtacarDosVeces;
     }
 
-    // --- Métodos compatibles con el código existente ---
-    public int getAtaque() {
-        return getAtk();
-    }
+    // ---------- API “compat” usada por PantallaBatalla ----------
+    public int getAtaque() { return getAtk(); }
+    public int getDefensa() { return getDef(); }
 
-    public int getDefensa() {
-        return getDef();
-    }
+    // ¡Este era el que faltaba!
+    public void setAtaque(int ataque) { setAtk(ataque); }
 
-    public void setDefensa(int def) {
-        setDef(def);
-    }
+    public void setDefensa(int def) { setDef(def); }
 
-    // --- Nuevo método para obtener el nivel ---
-    public int getNivel() {
-        return nivel;
-    }
+    // ---------- Nivel ----------
+    public int getNivel() { return nivel; }
 
-    // --- Nuevo método para cambiar el nivel si es necesario ---
     public void setNivel(int nivel) {
         if (nivel >= 1 && nivel <= 5) {
             this.nivel = nivel;
         }
     }
 
-    // --- Métodos para manejar usos ---
-    public int getUsosRestantes() {
-        return usosRestantes;
-    }
+    // ---------- Usos de invocación ----------
+    public int getUsosRestantes() { return usosRestantes; }
 
     /**
      * Disminuye en 1 los usos restantes y devuelve true si aún quedan usos,
@@ -106,10 +79,9 @@ public abstract class CartaTropa {
         return usosRestantes > 0;
     }
 
-    public void resetUsos() {
-        this.usosRestantes = 2;
-    }
+    public void resetUsos() { this.usosRestantes = 2; }
 
+    // ---------- Recursos ----------
     public void dispose() {
         if (imagen != null) imagen.dispose();
     }

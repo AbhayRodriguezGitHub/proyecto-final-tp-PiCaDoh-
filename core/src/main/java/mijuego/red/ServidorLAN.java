@@ -1,38 +1,55 @@
 package mijuego.red;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.google.gson.*;
 
 import javax.swing.*;
-import java.awt.*;
+import javax.swing.ImageIcon;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.SwingConstants;
+
+import java.awt.Color;
+import java.awt.Font;
+
 import java.io.*;
 import java.net.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.*;
-import java.util.*; // mantenemos esto para Map, Queue, etc.
 
 /**
- * Servidor TCP simple con matchmaking 1v1 y soporte de INVOKE / INVOKE_EFFECT / PLAY / REVEAL.
+ * Servidor TCP sincronizado para partidas 1v1.
+ * Envía MATCHED, START y REVEAL (con invocaciones y efectos del turno).
  */
 public class ServidorLAN {
+
     private static final int PORT = 5000;
     private final ServerSocket server;
     private final ExecutorService pool = Executors.newCachedThreadPool();
     private final Gson gson = new Gson();
 
+    private final Queue<ClientHandler> waiting = new ConcurrentLinkedQueue<>();
+    private final Map<ClientHandler, Match> matches = new ConcurrentHashMap<>();
+
+    // =================== MATCH ===================
     private static class Match {
         final ClientHandler a;
         final ClientHandler b;
-        Match(ClientHandler a, ClientHandler b) { this.a = a; this.b = b; }
+        final BattleState state = new BattleState();
+        boolean partidaIniciada = false;
+
+        Match(ClientHandler a, ClientHandler b) {
+            this.a = a;
+            this.b = b;
+        }
     }
 
-    private final Queue<ClientHandler> waiting = new ConcurrentLinkedQueue<>();
-
+    // =================== CONSTRUCTOR ===================
     public ServidorLAN(int port) throws IOException {
         this.server = new ServerSocket(port);
-        System.out.println("[Servidor] escuchando en puerto " + port);
+        System.out.println("[ServidorLAN] Servidor iniciado en puerto " + port);
         mostrarVentanaServidor();
     }
 
@@ -41,19 +58,18 @@ public class ServidorLAN {
             JFrame frame = new JFrame("SERVIDOR LAN");
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             String ruta = "lwjgl3/assets/lan/SERVIDOR.png";
-            java.io.File file = new java.io.File(ruta);
-            if (!file.exists()) {
-                JLabel label = new JLabel("SERVIDOR LAN ACTIVO", SwingConstants.CENTER);
+            File file = new File(ruta);
+            JLabel label;
+            if (file.exists()) {
+                label = new JLabel(new ImageIcon(file.getAbsolutePath()));
+            } else {
+                label = new JLabel("SERVIDOR LAN ACTIVO", SwingConstants.CENTER);
                 label.setFont(new Font("Arial", Font.BOLD, 18));
                 label.setForeground(Color.WHITE);
                 label.setBackground(Color.DARK_GRAY);
                 label.setOpaque(true);
-                frame.add(label);
-            } else {
-                ImageIcon icon = new ImageIcon(file.getAbsolutePath());
-                JLabel label = new JLabel(icon);
-                frame.add(label);
             }
+            frame.add(label);
             frame.pack();
             frame.setResizable(false);
             frame.setLocationRelativeTo(null);
@@ -61,6 +77,7 @@ public class ServidorLAN {
         });
     }
 
+    // =================== START SERVER ===================
     public void start() {
         try {
             while (!server.isClosed()) {
@@ -69,7 +86,7 @@ public class ServidorLAN {
                 pool.submit(ch);
             }
         } catch (IOException e) {
-            System.err.println("[Servidor] error accept: " + e.getMessage());
+            System.err.println("[ServidorLAN] Error accept: " + e.getMessage());
         } finally {
             shutdown();
         }
@@ -78,23 +95,21 @@ public class ServidorLAN {
     private void shutdown() {
         try { server.close(); } catch (IOException ignored) {}
         pool.shutdownNow();
-        System.out.println("[Servidor] cerrado.");
+        System.out.println("[ServidorLAN] Cerrado.");
     }
 
+    // =================== CLIENT HANDLER ===================
     private class ClientHandler implements Runnable {
         final Socket socket;
         final BufferedReader in;
         final PrintWriter out;
 
-        Match match; // asignado cuando hay match
+        Match match;
+        List<String> tropas;
+        List<String> efectos;
 
-        // START flow
-        java.util.List<String> tropas;
-        java.util.List<String> efectos;
-
-        // por-turno:
-        JsonArray pendingInvokes = new JsonArray();       // tropa invokes
-        JsonArray pendingEffectInvokes = new JsonArray(); // effect invokes
+        JsonArray pendingInvokes = new JsonArray();
+        JsonArray pendingEffectInvokes = new JsonArray();
         boolean playedThisTurn = false;
 
         ClientHandler(Socket s) throws IOException {
@@ -106,64 +121,66 @@ public class ServidorLAN {
         @Override
         public void run() {
             try {
-                out.println(gson.toJson(Map.of("type","WELCOME")));
-                enqueueAndMatch(this);
+                out.println(gson.toJson(Map.of("type", "WELCOME")));
+                System.out.println("[ServidorLAN] Cliente conectado desde " + socket.getRemoteSocketAddress());
 
                 String line;
                 while ((line = in.readLine()) != null) {
                     JsonObject obj = JsonParser.parseString(line).getAsJsonObject();
                     String type = obj.has("type") ? obj.get("type").getAsString() : "";
 
-                    System.out.println("[Servidor] msg type=" + type + " from " + socket.getRemoteSocketAddress());
-
                     switch (type) {
+                        case "JOIN_QUEUE":
+                            enqueueAndMatch(this);
+                            break;
+
                         case "TROOP_READY":
                             this.tropas = jsonArrayToList(obj.getAsJsonArray("tropas"));
                             tryStartIfReady();
                             break;
+
                         case "EFFECT_READY":
                             this.efectos = jsonArrayToList(obj.getAsJsonArray("efectos"));
                             tryStartIfReady();
                             break;
+
                         case "INVOKE":
-                            JsonObject invokeObj = new JsonObject();
-                            if (obj.has("slot")) invokeObj.add("slot", obj.get("slot"));
-                            if (obj.has("class")) invokeObj.add("class", obj.get("class"));
-                            this.pendingInvokes.add(invokeObj);
-                            System.out.println("[Servidor] Stored INVOKE from " + socket.getRemoteSocketAddress() + " -> " + invokeObj);
+                            JsonObject inv = new JsonObject();
+                            if (obj.has("slot")) inv.add("slot", obj.get("slot"));
+                            if (obj.has("class")) inv.add("class", obj.get("class"));
+                            pendingInvokes.add(inv);
                             break;
+
                         case "INVOKE_EFFECT":
-                            JsonObject ie = new JsonObject();
-                            if (obj.has("class")) ie.add("class", obj.get("class"));
-                            this.pendingEffectInvokes.add(ie);
-                            System.out.println("[Servidor] Stored INVOKE_EFFECT from " + socket.getRemoteSocketAddress() + " -> " + ie);
+                            JsonObject eff = new JsonObject();
+                            if (obj.has("class")) eff.add("class", obj.get("class"));
+                            pendingEffectInvokes.add(eff);
                             break;
+
                         case "PLAY":
                             this.playedThisTurn = true;
-                            System.out.println("[Servidor] PLAY recibido de " + socket.getRemoteSocketAddress());
-                            if (match != null) checkAndRevealTurn(match);
+                            if (match != null) checkAndSendReveal(match);
                             break;
-                        case "PING":
-                            out.println(gson.toJson(Map.of("type","PONG")));
-                            break;
+
                         default:
-                            System.out.println("[Servidor] Mensaje no manejado: " + line);
-                            break;
+                            System.out.println("[ServidorLAN] Mensaje desconocido: " + type);
                     }
                 }
             } catch (IOException ex) {
-                System.out.println("[Servidor] desconexión: " + ex.getMessage());
+                System.out.println("[ServidorLAN] desconexión: " + ex.getMessage());
             } finally {
                 close();
             }
         }
 
         private void tryStartIfReady() {
-            if (match == null) return;
+            if (match == null || match.partidaIniciada) return;
             if (tropas == null || efectos == null) return;
 
             ClientHandler rival = (match.a == this) ? match.b : match.a;
             if (rival.tropas == null || rival.efectos == null) return;
+
+            match.partidaIniciada = true;
 
             JsonObject msgA = new JsonObject();
             msgA.addProperty("type", "START");
@@ -171,8 +188,8 @@ public class ServidorLAN {
             msgA.add("playerEfectos", listToJsonArray(this.efectos));
             msgA.add("enemyTropas", listToJsonArray(rival.tropas));
             msgA.add("enemyEfectos", listToJsonArray(rival.efectos));
-            msgA.addProperty("vidaP", 80);
-            msgA.addProperty("vidaE", 80);
+            msgA.addProperty("vidaP", match.state.vidaA);
+            msgA.addProperty("vidaE", match.state.vidaB);
 
             JsonObject msgB = new JsonObject();
             msgB.addProperty("type", "START");
@@ -180,99 +197,82 @@ public class ServidorLAN {
             msgB.add("playerEfectos", listToJsonArray(rival.efectos));
             msgB.add("enemyTropas", listToJsonArray(this.tropas));
             msgB.add("enemyEfectos", listToJsonArray(this.efectos));
-            msgB.addProperty("vidaP", 80);
-            msgB.addProperty("vidaE", 80);
+            msgB.addProperty("vidaP", match.state.vidaB);
+            msgB.addProperty("vidaE", match.state.vidaA);
 
             match.a.send(gson.toJson(msgA));
             match.b.send(gson.toJson(msgB));
 
-            System.out.println("[Servidor] START enviado a la partida entre " +
-                match.a.socket.getRemoteSocketAddress() + " y " + match.b.socket.getRemoteSocketAddress());
+            System.out.println("[ServidorLAN] START enviado a ambos jugadores.");
         }
 
         private void close() {
             try { socket.close(); } catch (IOException ignored) {}
             if (match != null) {
-                ClientHandler other = match.a == this ? match.b : match.a;
-                try { other.send(gson.toJson(Map.of("type","OPPONENT_DISCONNECTED"))); } catch (Exception ignored) {}
+                ClientHandler other = (match.a == this) ? match.b : match.a;
+                try { other.send(gson.toJson(Map.of("type", "OPPONENT_DISCONNECTED"))); } catch (Exception ignored) {}
+                matches.remove(this);
+                matches.remove(other);
             } else {
                 waiting.remove(this);
             }
         }
 
-        void send(String msg) {
-            out.println(msg);
-        }
-    } // ClientHandler
+        void send(String msg) { out.println(msg); }
+    }
 
-    private void enqueueAndMatch(ClientHandler ch) {
+    // =================== MATCHMAKING ===================
+    private synchronized void enqueueAndMatch(ClientHandler ch) {
+        if (waiting.contains(ch)) return;
         waiting.add(ch);
+
+        System.out.println("[ServidorLAN] Cliente pide unirse a la cola... Total en espera: " + waiting.size());
+
         if (waiting.size() >= 2) {
-            ClientHandler a = waiting.poll();
-            ClientHandler b = waiting.poll();
-            if (a != null && b != null) {
-                Match m = new Match(a, b);
-                a.match = m;
-                b.match = m;
-                a.send(gson.toJson(Map.of("type","MATCHED")));
-                b.send(gson.toJson(Map.of("type","MATCHED")));
-                System.out.println("[Servidor] Match creado entre " +
-                    a.socket.getRemoteSocketAddress() + " y " + b.socket.getRemoteSocketAddress());
-            } else {
-                if (a != null) waiting.add(a);
-                if (b != null) waiting.add(b);
-            }
+            ClientHandler jugador1 = waiting.poll();
+            ClientHandler jugador2 = waiting.poll();
+            if (jugador1 == null || jugador2 == null) return;
+
+            Match match = new Match(jugador1, jugador2);
+            matches.put(jugador1, match);
+            matches.put(jugador2, match);
+            jugador1.match = match;
+            jugador2.match = match;
+
+            jugador1.send(gson.toJson(Map.of("type", "MATCHED")));
+            jugador2.send(gson.toJson(Map.of("type", "MATCHED")));
+
+            System.out.println("[ServidorLAN] Jugadores emparejados!");
         }
     }
 
-    private java.util.List<String> jsonArrayToList(JsonArray arr) {
-        java.util.List<String> out = new java.util.ArrayList<>();
-        if (arr == null) return out;
-        for (JsonElement e : arr) out.add(e.getAsString());
-        return out;
-    }
-
-    private JsonArray listToJsonArray(java.util.List<String> list) {
-        JsonArray a = new JsonArray();
-        if (list != null) for (String s : list) a.add(s);
-        return a;
-    }
-
-    /**
-     * checkAndRevealTurn:
-     * Si ambos jugadores tienen playedThisTurn = true, se envía REVEAL con:
-     * - playerInvokes, enemyInvokes
-     * - playerEffectInvokes, enemyEffectInvokes
-     * y se limpian pending arrays y flags.
-     */
-    private void checkAndRevealTurn(Match m) {
-        if (m == null) return;
+    // =================== REVEAL ===================
+    private void checkAndSendReveal(Match m) {
         ClientHandler A = m.a;
         ClientHandler B = m.b;
-
         if (!A.playedThisTurn || !B.playedThisTurn) return;
 
-        JsonObject msgA = new JsonObject();
-        msgA.addProperty("type", "REVEAL");
-        msgA.add("playerInvokes", A.pendingInvokes.deepCopy());
-        msgA.add("enemyInvokes", B.pendingInvokes.deepCopy());
-        msgA.add("playerEffectInvokes", A.pendingEffectInvokes.deepCopy());
-        msgA.add("enemyEffectInvokes", B.pendingEffectInvokes.deepCopy());
+        // Construir y enviar REVEAL para A (player = A, enemy = B)
+        JsonObject revealA = new JsonObject();
+        revealA.addProperty("type", "REVEAL");
+        revealA.add("playerInvokes", A.pendingInvokes.deepCopy());
+        revealA.add("enemyInvokes", B.pendingInvokes.deepCopy());
+        revealA.add("playerEffectInvokes", A.pendingEffectInvokes.deepCopy());
+        revealA.add("enemyEffectInvokes", B.pendingEffectInvokes.deepCopy());
+        A.send(gson.toJson(revealA));
 
-        JsonObject msgB = new JsonObject();
-        msgB.addProperty("type", "REVEAL");
-        msgB.add("playerInvokes", B.pendingInvokes.deepCopy());
-        msgB.add("enemyInvokes", A.pendingInvokes.deepCopy());
-        msgB.add("playerEffectInvokes", B.pendingEffectInvokes.deepCopy());
-        msgB.add("enemyEffectInvokes", A.pendingEffectInvokes.deepCopy());
+        // Construir y enviar REVEAL para B (player = B, enemy = A)
+        JsonObject revealB = new JsonObject();
+        revealB.addProperty("type", "REVEAL");
+        revealB.add("playerInvokes", B.pendingInvokes.deepCopy());
+        revealB.add("enemyInvokes", A.pendingInvokes.deepCopy());
+        revealB.add("playerEffectInvokes", B.pendingEffectInvokes.deepCopy());
+        revealB.add("enemyEffectInvokes", A.pendingEffectInvokes.deepCopy());
+        B.send(gson.toJson(revealB));
 
-        A.send(gson.toJson(msgA));
-        B.send(gson.toJson(msgB));
+        System.out.println("[ServidorLAN] REVEAL enviado a ambos jugadores.");
 
-        System.out.println("[Servidor] REVEAL enviado. A invokes=" + A.pendingInvokes + " | B invokes=" + B.pendingInvokes +
-            " | A effects=" + A.pendingEffectInvokes + " | B effects=" + B.pendingEffectInvokes);
-
-        // limpiar
+        // Reset turno
         A.pendingInvokes = new JsonArray();
         B.pendingInvokes = new JsonArray();
         A.pendingEffectInvokes = new JsonArray();
@@ -281,6 +281,21 @@ public class ServidorLAN {
         B.playedThisTurn = false;
     }
 
+    // =================== HELPERS ===================
+    private List<String> jsonArrayToList(JsonArray arr) {
+        List<String> out = new ArrayList<>();
+        if (arr == null) return out;
+        for (JsonElement e : arr) out.add(e.getAsString());
+        return out;
+    }
+
+    private JsonArray listToJsonArray(List<String> list) {
+        JsonArray a = new JsonArray();
+        if (list != null) for (String s : list) a.add(s);
+        return a;
+    }
+
+    // =================== MAIN ===================
     public static void main(String[] args) throws Exception {
         ServidorLAN s = new ServidorLAN(PORT);
         s.start();

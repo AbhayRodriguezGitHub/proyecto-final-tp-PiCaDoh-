@@ -26,7 +26,7 @@ import java.util.function.Consumer;
 /**
  * Pantalla de selección de efectos.
  * En modo LAN: cuando el jugador finaliza las 7 elecciones, envía EFFECT_READY al servidor
- * y espera un mensaje START para crear la pantalla de batalla con las listas enviadas por el servidor.
+ * y espera un mensaje START para crear la pantalla de batalla.
  */
 public class PantallaSeleccionEfecto implements Screen {
     private final Principal juego;
@@ -48,7 +48,6 @@ public class PantallaSeleccionEfecto implements Screen {
     private static final int R_X = 1609 - R_W;
     private static final int R_Y = 75;
 
-    // lista usada sólo para generar pares aleatorios (si querés mantenerla central, usá RegistroEfectos)
     private final List<Class<? extends CartaEfecto>> clasesEfecto = Arrays.asList(
         mijuego.picadoh.efectos.Acelereitor.class,
         mijuego.picadoh.efectos.EscudoReal.class,
@@ -82,14 +81,15 @@ public class PantallaSeleccionEfecto implements Screen {
     private float tiempoDesdeClick = 0f;
     private CartaEfecto cartaSeleccionada = null;
 
-    // flag/estado de espera por START
+    // Estado de espera por START
     private boolean esperandoStart = false;
 
-    // guardamos el listener anterior para restaurarlo al cerrar (opcional)
+    // Listener previo (si quisieras restaurarlo luego)
     private Consumer<com.google.gson.JsonObject> listenerPrevio = null;
 
-    // font para mostrar "Esperando rival..."
-    private final BitmapFont fontEsperando = new BitmapFont();
+    // Recursos de “espera rival”
+    private Texture esperaImg = null;
+    private final BitmapFont fontEsperando = new BitmapFont(); // fallback
 
     public PantallaSeleccionEfecto(Principal juego, List<CartaTropa> cartasTropaSeleccionadas) {
         this.juego = juego;
@@ -99,6 +99,14 @@ public class PantallaSeleccionEfecto implements Screen {
     @Override
     public void show() {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/ELECCIONEFECTO.png"));
+
+        // Imagen de “espera rival”
+        try {
+            esperaImg = new Texture(Gdx.files.absolute("lwjgl3/assets/lan/ESPERA1.png"));
+        } catch (Exception e) {
+            System.out.println("[PantallaSeleccionEfecto] No se pudo cargar ESPERA1.png: " + e.getMessage());
+            esperaImg = null;
+        }
 
         camara = new OrthographicCamera();
         viewport = new FitViewport(VW, VH, camara);
@@ -161,25 +169,18 @@ public class PantallaSeleccionEfecto implements Screen {
             if (pantallaFinalizada) return;
             pantallaFinalizada = true;
 
-            // --- En modo LAN: registramos listener ANTES DE ENVIAR y luego enviamos EFFECT_READY ---
             if (juego.clienteLAN != null) {
-                // guardamos listener previo por si queremos restaurarlo (opcional)
-                listenerPrevio = getAndWrapCurrentListenerSafe();
+                listenerPrevio = null; // si tu ClienteLAN tuviera getOnMessage() lo podrías guardar
 
-                // registramos nuestro listener que espera MATCHED/START
+                // escuchamos START
                 juego.clienteLAN.setOnMessage(json -> {
                     try {
                         if (!json.has("type")) return;
                         String type = json.get("type").getAsString();
-                        if ("MATCHED".equals(type)) {
-                            System.out.println("[CLIENTE-LAN] Emparejado: " + json);
-                        } else if ("START".equals(type)) {
-                            System.out.println("[CLIENTE-LAN] START recibido: " + json);
-                            // parseo y creación de pantalla en hilo principal
+                        if ("START".equals(type)) {
                             List<String> playerTropas = jsonArrayToList(json.getAsJsonArray("playerTropas"));
                             List<String> playerEfectos = jsonArrayToList(json.getAsJsonArray("playerEfectos"));
                             List<String> enemyTropas = jsonArrayToList(json.getAsJsonArray("enemyTropas"));
-                            List<String> enemyEfectos = jsonArrayToList(json.getAsJsonArray("enemyEfectos"));
                             int vidaP = json.has("vidaP") ? json.get("vidaP").getAsInt() : 80;
                             int vidaE = json.has("vidaE") ? json.get("vidaE").getAsInt() : 80;
 
@@ -188,46 +189,29 @@ public class PantallaSeleccionEfecto implements Screen {
                                     List<CartaTropa> propias = convertToTropas(playerTropas);
                                     List<CartaEfecto> efectosPropios = convertToEfectos(playerEfectos);
                                     List<CartaTropa> enemigas = convertToTropas(enemyTropas);
-                                    // List<CartaEfecto> efectosEnemigo = convertToEfectos(enemyEfectos); // opcional
 
                                     ContextoBatalla contexto = new ContextoBatalla(propias, enemigas, vidaP, vidaE);
-                                    // lanzamos pantalla de batalla con los efectos del jugador (según diseño)
                                     juego.setScreen(new PantallaBatalla(juego, contexto, efectosPropios));
                                 } catch (Exception ex) {
                                     System.out.println("[CLIENTE-LAN] Error creando batalla desde START: " + ex.getMessage());
                                 }
                             });
-                        } else if ("OPPONENT_DISCONNECTED".equals(type)) {
-                            System.out.println("[CLIENTE-LAN] Rival desconectado.");
-                        } else {
-                            // cualquier otro mensaje lo mostramos
-                            System.out.println("[CLIENTE-LAN] Mensaje LAN: " + json);
                         }
                     } catch (Exception ex) {
                         System.out.println("[CLIENTE-LAN] Error en listener de pantalla efecto: " + ex.getMessage());
                     }
                 });
 
-                // preparar nombres de clase de efectos a enviar
+                // enviamos EFFECT_READY
                 List<String> effectClassNames = new ArrayList<>();
-                for (CartaEfecto e : cartasEfectoElegidas) {
-                    if (e != null) effectClassNames.add(e.getClass().getName());
-                }
+                for (CartaEfecto e : cartasEfectoElegidas) if (e != null) effectClassNames.add(e.getClass().getName());
+                System.out.println("[CLIENTE-LAN] Enviando EFFECT_READY...");
+                try { juego.clienteLAN.sendEffectReady(effectClassNames); }
+                catch (Exception ex) { System.out.println("[CLIENTE-LAN] Error al enviar EFFECT_READY: " + ex.getMessage()); }
 
-                // enviar (no bloqueante)
-                System.out.println("[CLIENTE-LAN] Enviando efectos elegidos al servidor (no bloqueante)...");
-                try {
-                    juego.clienteLAN.sendEffectReady(effectClassNames);
-                } catch (Exception ex) {
-                    System.out.println("[CLIENTE-LAN] Error al enviar EFFECT_READY: " + ex.getMessage());
-                }
-
-                // indicamos estado de espera y bloqueamos UI de selección
-                esperandoStart = true;
-                System.out.println("[CLIENTE-LAN] Esperando START desde servidor...");
+                esperandoStart = true; // desde ahora mostramos la imagen de espera
             } else {
-                // fallback local si no hay clienteLAN (modo offline)
-                System.out.println("[CLIENTE-LAN] No hay cliente LAN (fallback local).");
+                // Modo offline
                 ContextoBatalla contexto = new ContextoBatalla(cartasTropaSeleccionadas, new ArrayList<>(), 80, 80);
                 juego.setScreen(new PantallaBatalla(juego, contexto, cartasEfectoElegidas));
                 dispose();
@@ -237,24 +221,13 @@ public class PantallaSeleccionEfecto implements Screen {
         }
     }
 
-    // recupera el listener en uso si la implementación lo guarda (aquí es trivial, retornamos null)
-    private Consumer<JsonObject> getAndWrapCurrentListenerSafe() {
-        // tu ClienteLAN actual solo guarda un listener; si quisieras encadenar, tendrías que
-        // implementar getOnMessage() en ClienteLAN. Para simplicidad devolvemos null.
-        return null;
-    }
-
-    // Convierte lista JSON->List<String>
     private List<String> jsonArrayToList(JsonArray arr) {
         List<String> out = new ArrayList<>();
         if (arr == null) return out;
-        for (JsonElement e : arr) {
-            out.add(e.getAsString());
-        }
+        for (JsonElement e : arr) out.add(e.getAsString());
         return out;
     }
 
-    // intenta instanciar tropas a partir de nombres (soporta "pkg.ClassName" o nombre simple)
     private List<CartaTropa> convertToTropas(List<String> names) {
         List<CartaTropa> out = new ArrayList<>();
         if (names == null) return out;
@@ -266,7 +239,6 @@ public class PantallaSeleccionEfecto implements Screen {
     }
 
     private CartaTropa tryCreateTropaByName(String name) {
-        // 1) intentar Class.forName (nombre completo)
         try {
             Class<?> c = Class.forName(name);
             if (CartaTropa.class.isAssignableFrom(c)) {
@@ -275,13 +247,10 @@ public class PantallaSeleccionEfecto implements Screen {
                 return RegistroCartas.crear(ct);
             }
         } catch (Throwable ignored) {}
-
-        // 2) intentar registro por nombre simple o por display name
         try {
             Optional<CartaTropa> opt = RegistroCartas.crearPorNombre(name);
             if (opt.isPresent()) return opt.get();
         } catch (Throwable ignored) {}
-
         System.out.println("[CLIENTE-LAN] No se pudo crear tropa: " + name);
         return null;
     }
@@ -297,7 +266,6 @@ public class PantallaSeleccionEfecto implements Screen {
     }
 
     private CartaEfecto tryCreateEfectoByName(String name) {
-        // 1) intentar Class.forName (nombre completo)
         try {
             Class<?> c = Class.forName(name);
             if (CartaEfecto.class.isAssignableFrom(c)) {
@@ -306,13 +274,10 @@ public class PantallaSeleccionEfecto implements Screen {
                 return RegistroEfectos.crear(ce);
             }
         } catch (Throwable ignored) {}
-
-        // 2) intentar registro por nombre simple o por display name
         try {
             Optional<CartaEfecto> opt = RegistroEfectos.crearPorNombre(name);
             if (opt.isPresent()) return opt.get();
         } catch (Throwable ignored) {}
-
         System.out.println("[CLIENTE-LAN] No se pudo crear efecto: " + name);
         return null;
     }
@@ -321,6 +286,7 @@ public class PantallaSeleccionEfecto implements Screen {
     public void render(float delta) {
         ScreenUtils.clear(0, 0, 0, 1);
         juego.batch.setProjectionMatrix(camara.combined);
+
         juego.batch.begin();
         juego.batch.draw(fondo, 0, 0, VW, VH);
 
@@ -329,15 +295,19 @@ public class PantallaSeleccionEfecto implements Screen {
             juego.batch.draw(carta2.getImagen(), R_X, R_Y, R_W, R_H);
         }
 
-        // si estamos esperando START, dibujar mensaje central
+        // Mostrar imagen de espera mientras aguardamos el START del servidor
         if (esperandoStart) {
-            String msg = "Esperando rival...";
-            fontEsperando.getData().setScale(2f);
-            float w = fontEsperando.getRegion().getRegionWidth(); // no fiable para width real, usamos layout minimal
-            // centramos simple:
-            float textX = VW / 2f - 200;
-            float textY = VH / 2f;
-            fontEsperando.draw(juego.batch, msg, textX, textY);
+            if (esperaImg != null) {
+                // cubrir pantalla completa
+                juego.batch.draw(esperaImg, 0, 0, VW, VH);
+            } else {
+                // fallback a texto si no está la imagen
+                String msg = "Esperando rival...";
+                fontEsperando.getData().setScale(2f);
+                float textX = VW / 2f - 200;
+                float textY = VH / 2f;
+                fontEsperando.draw(juego.batch, msg, textX, textY);
+            }
         }
 
         juego.batch.end();
@@ -363,13 +333,10 @@ public class PantallaSeleccionEfecto implements Screen {
     @Override
     public void dispose() {
         if (fondo != null) fondo.dispose();
+        if (esperaImg != null) esperaImg.dispose();
         if (carta1 != null) carta1.dispose();
         if (carta2 != null) carta2.dispose();
-
-        // restaurar listener previo si existiera (implementa getOnMessage en ClienteLAN si querés)
-        if (listenerPrevio != null && juego.clienteLAN != null) {
-            juego.clienteLAN.setOnMessage(listenerPrevio);
-        }
         fontEsperando.dispose();
+        // (si guardaste listenerPrevio y querés restaurarlo, hacelo acá)
     }
 }
