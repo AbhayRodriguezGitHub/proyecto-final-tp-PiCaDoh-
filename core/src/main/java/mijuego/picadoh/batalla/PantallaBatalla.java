@@ -104,6 +104,7 @@ public class PantallaBatalla implements Screen {
     private final boolean lanModoEstricto;
     private boolean revealRecibidoEsteTurno = false; // sólo para depurar/diagnosticar
 
+    private boolean inputBloqueado = false;
 
     // Efecto propio y enemigo mostrados en la UI del turno actual
     private CartaEfecto efectoEnRanuraJugador = null;
@@ -325,6 +326,8 @@ public class PantallaBatalla implements Screen {
         Gdx.input.setInputProcessor(new InputAdapter() {
             @Override
             public boolean keyDown(int keycode) {
+                if (inputBloqueado) return false;
+
                 if (partidaTerminada) return false;
                 if (keycode == com.badlogic.gdx.Input.Keys.F1) {
                     contexto.setVidaPropia(contexto.getVidaMaxima());
@@ -356,6 +359,7 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchDown(int screenX, int screenY, int pointer, int button) {
+                if (inputBloqueado) return false;
                 if (batallaEnCurso || partidaTerminada) return false;
 
                 unproj(screenX, screenY);
@@ -403,6 +407,8 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchDragged(int screenX, int screenY, int pointer) {
+                if (inputBloqueado) return false;
+
                 if (batallaEnCurso || partidaTerminada) return false;
 
                 unproj(screenX, screenY);
@@ -434,6 +440,8 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean touchUp(int screenX, int screenY, int pointer, int button) {
+                if (inputBloqueado) return false;
+
                 if (batallaEnCurso || partidaTerminada) return false;
 
                 unproj(screenX, screenY);
@@ -534,6 +542,7 @@ public class PantallaBatalla implements Screen {
 
             @Override
             public boolean mouseMoved(int screenX, int screenY) {
+                if (inputBloqueado) return false;
                 if (batallaEnCurso || partidaTerminada) {
                     cartaHoverIndex = -1;
                     efectoHoverIndex = -1;
@@ -596,6 +605,7 @@ public class PantallaBatalla implements Screen {
                 // IMPORTANTE: enviar vidas actuales
                 juego.clienteLAN.sendPlay(contexto.getVidaPropia(), contexto.getVidaEnemiga());
                 esperandoReveal = true;
+                inputBloqueado = true;
                 playEnviadoEsteTurno = true;
                 reintentosRealizados = 0;
                 tiempoDesdeEspera = 0f;
@@ -615,6 +625,7 @@ public class PantallaBatalla implements Screen {
         if (!batallaEnCurso) {
             // Limpieza de flags LAN antes de iniciar animación/combate
             esperandoReveal = false;
+            inputBloqueado = false;
             playEnviadoEsteTurno = false;
             reintentosRealizados = 0;
             tiempoDesdeEspera = 0f;
