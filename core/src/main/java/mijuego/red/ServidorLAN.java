@@ -207,6 +207,7 @@ public class ServidorLAN {
                             enqueueAndMatch(this);
                             break;
 
+
                         case "TROOP_READY":
                             this.tropas = jsonArrayToList(obj.getAsJsonArray("tropas"));
                             tryStartIfReady();
