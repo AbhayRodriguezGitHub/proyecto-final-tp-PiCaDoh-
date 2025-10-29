@@ -18,10 +18,13 @@ import java.util.function.Consumer;
  * Cliente TCP para juego LAN de Pi-Ca-Doh!
  * Gestiona conexión, lectura asíncrona, envío JSON y eventos de red.
  *
- * Protocolo actualizado:
- *  - Al presionar PLAY se envía:
- *      { "type":"PLAY", "vidaP": <int>, "vidaE": <int> }
- *    (el servidor usa el reporte del cliente A como estado autoritativo)
+ * ✅ Compatible entre distintas computadoras en la misma red.
+ * Permite configurar la IP del servidor por:
+ *   1. Parámetro del constructor
+ *   2. Variable de entorno SERVER_HOST
+ *   3. Propiedad del sistema (-Dserver.host=192.168.x.x)
+ *   4. Archivo local "server_ip.txt"
+ *   5. Valor por defecto (192.168.0.55)
  */
 public class ClienteLAN {
 
@@ -48,8 +51,28 @@ public class ClienteLAN {
 
     public ClienteLAN(Principal juego, String host, int port) {
         this.juego = juego;
-        this.host = host;
+        this.host = (host != null && !host.isBlank()) ? host.trim() : resolveServerHost();
         this.port = port;
+    }
+
+    // ====== Resolver host automáticamente ======
+    public static String resolveServerHost() {
+        // 1. Propiedad del sistema (-Dserver.host=192.168.x.x)
+        String h = System.getProperty("server.host");
+        if (h != null && !h.isBlank()) return h.trim();
+
+        // 2. Variable de entorno SERVER_HOST
+        h = System.getenv("SERVER_HOST");
+        if (h != null && !h.isBlank()) return h.trim();
+
+        // 3. Archivo local server_ip.txt
+        try (BufferedReader br = new BufferedReader(new FileReader("server_ip.txt"))) {
+            String line = br.readLine();
+            if (line != null && !line.isBlank()) return line.trim();
+        } catch (IOException ignored) {}
+
+        // 4. Fallback manual (ajustar a tu red local)
+        return "192.168.0.55"; // ← Cambiá por la IP LAN del servidor si querés dejar fija
     }
 
     // ====== Estado de conexión ======
@@ -59,14 +82,18 @@ public class ClienteLAN {
 
     // ====== Conexión al servidor ======
     public boolean connect() {
+        String destino = (host != null) ? host : resolveServerHost();
+        System.out.println("[ClienteLAN] Intentando conectar a " + destino + ":" + port);
+
         try {
             if (isConnected()) {
                 System.out.println("[ClienteLAN] Ya conectado. Reusando conexión.");
                 return true;
             }
 
-            socket = new Socket(host, port);
+            socket = new Socket(destino, port);
             socket.setTcpNoDelay(true);
+            socket.setKeepAlive(true);
 
             out = new PrintWriter(new BufferedWriter(
                 new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)
@@ -79,10 +106,11 @@ public class ClienteLAN {
             running = true;
             pool.submit(this::readerLoop);
 
-            System.out.println("[ClienteLAN] Conectado a " + host + ":" + port);
+            System.out.println("[ClienteLAN] ✅ Conectado al servidor LAN " + destino + ":" + port);
             return true;
+
         } catch (IOException e) {
-            System.err.println("[ClienteLAN] Error al conectar: " + e.getMessage());
+            System.err.println("[ClienteLAN] ❌ Error al conectar con " + destino + ":" + port + " → " + e.getMessage());
             return false;
         }
     }
@@ -103,10 +131,10 @@ public class ClienteLAN {
             }
         } catch (IOException e) {
             if (running) {
-                System.err.println("[ClienteLAN] Error en readerLoop: " + e.getMessage());
+                System.err.println("[ClienteLAN] ⚠ Error en readerLoop: " + e.getMessage());
             }
         } finally {
-            System.out.println("[ClienteLAN] Hilo lector finalizado.");
+            System.out.println("[ClienteLAN] 🔚 Hilo lector finalizado.");
             close();
         }
     }
@@ -134,7 +162,7 @@ public class ClienteLAN {
                 break;
 
             case "OPPONENT_DISCONNECTED":
-                System.err.println("[ClienteLAN] Tu oponente se desconectó.");
+                System.err.println("[ClienteLAN] ⚠ Tu oponente se desconectó.");
                 break;
 
             default:
@@ -163,7 +191,6 @@ public class ClienteLAN {
     }
 
     // ====== Métodos de envío predefinidos ======
-
     /** Unirse a la cola de emparejamiento */
     public void joinQueue() {
         JsonObject o = new JsonObject();
@@ -213,10 +240,7 @@ public class ClienteLAN {
         System.out.println("[ClienteLAN] INVOKE_EFFECT -> " + className);
     }
 
-    /**
-     * Avisar que el jugador presionó PLAY con reporte de vidas del cliente.
-     * ¡Usar este siempre!
-     */
+    /** Avisar que el jugador presionó PLAY con reporte de vidas */
     public void sendPlay(int vidaPropia, int vidaEnemiga) {
         JsonObject o = new JsonObject();
         o.addProperty("type", "PLAY");
@@ -226,10 +250,7 @@ public class ClienteLAN {
         System.out.println("[ClienteLAN] PLAY enviado con vidas -> propia=" + vidaPropia + " / enemiga=" + vidaEnemiga);
     }
 
-    /**
-     * Fallback (no recomendado). Mantengo por compatibilidad.
-     * Llama a sendPlay con -1/-1 (el servidor ignorará esos valores).
-     */
+    /** Fallback (no recomendado) */
     public void sendPlay() {
         sendPlay(-1, -1);
     }

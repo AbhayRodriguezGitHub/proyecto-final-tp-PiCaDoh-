@@ -6,7 +6,9 @@ import java.awt.Color;
 import java.awt.Font;
 import java.io.*;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -16,18 +18,40 @@ import java.util.concurrent.*;
  * Servidor TCP sincronizado para partidas 1v1.
  * Controla las conexiones, emparejamiento y sincroniza invocaciones, efectos y vidas.
  *
- * 🔁 Protocolo actualizado:
- * - Cada cliente envía "PLAY" con:
- *      { "type": "PLAY", "vidaP": <int>, "vidaE": <int> }
- * - El servidor usa las vidas reportadas por el cliente A como fuente oficial
- *   y las replica al cliente B en el REVEAL siguiente.
- * - Incluye ventana con imagen SERVIDOR.png (si existe).
+ * Protocolo:
+ *  - JOIN_QUEUE / TROOP_READY / EFFECT_READY / INVOKE / INVOKE_EFFECT / PLAY
+ *  - REVEAL replica invocaciones y vidas
+ *
+ * ✅ Preparado para LAN (varias PCs):
+ *  - Muestra todas las IPs locales del servidor
+ *  - UTF-8 en IO, TCP_NODELAY y keepAlive en sockets
+ *  - Puerto configurable (-Dserver.port / SERVER_PORT)
  */
 public class ServidorLAN {
 
-    private static final int PORT = 5000;
+    // ======== Config ========
+    private static int resolvePort(int defaultPort) {
+        // Propiedad del sistema: -Dserver.port=5000
+        String p = System.getProperty("server.port");
+        if (p != null && !p.isBlank()) {
+            try { return Integer.parseInt(p.trim()); } catch (NumberFormatException ignored) {}
+        }
+        // Variable de entorno: SERVER_PORT=5000
+        p = System.getenv("SERVER_PORT");
+        if (p != null && !p.isBlank()) {
+            try { return Integer.parseInt(p.trim()); } catch (NumberFormatException ignored) {}
+        }
+        return defaultPort;
+    }
+
+    private static final int DEFAULT_PORT = 5000;
+
     private final ServerSocket server;
-    private final ExecutorService pool = Executors.newCachedThreadPool();
+    private final ExecutorService pool = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "srv-worker-" + System.nanoTime());
+        t.setDaemon(true);
+        return t;
+    });
     private final Gson gson = new Gson();
 
     private final Queue<ClientHandler> waiting = new ConcurrentLinkedQueue<>();
@@ -59,9 +83,38 @@ public class ServidorLAN {
 
     // =================== CONSTRUCTOR ===================
     public ServidorLAN(int port) throws IOException {
-        this.server = new ServerSocket(port);
+        // Bind explícito a todas las interfaces (0.0.0.0)
+        ServerSocket ss = new ServerSocket();
+        ss.setReuseAddress(true);
+        ss.bind(new InetSocketAddress("0.0.0.0", port), 100);
+        this.server = ss;
+
         System.out.println("[ServidorLAN] Servidor iniciado en puerto " + port);
+        listarIPsLocales(port);
         mostrarVentanaServidor();
+    }
+
+    /** Imprime las IPs locales útiles para que los clientes se conecten */
+    private void listarIPsLocales(int port) {
+        System.out.println("[ServidorLAN] === IPs locales disponibles (conéctense a una de estas) ===");
+        try {
+            Enumeration<NetworkInterface> nics = NetworkInterface.getNetworkInterfaces();
+            while (nics.hasMoreElements()) {
+                NetworkInterface nic = nics.nextElement();
+                if (!nic.isUp() || nic.isLoopback() || nic.isVirtual()) continue;
+
+                Enumeration<InetAddress> addrs = nic.getInetAddresses();
+                while (addrs.hasMoreElements()) {
+                    InetAddress a = addrs.nextElement();
+                    if (a.isLoopbackAddress() || !(a instanceof Inet4Address)) continue;
+                    System.out.printf("[ServidorLAN]  - %s  (%s:%d)%n",
+                        a.getHostAddress(), nic.getDisplayName(), port);
+                }
+            }
+        } catch (SocketException e) {
+            System.out.println("[ServidorLAN] No se pudieron listar interfaces: " + e.getMessage());
+        }
+        System.out.println("[ServidorLAN] ============================================================");
     }
 
     private void mostrarVentanaServidor() {
@@ -96,6 +149,11 @@ public class ServidorLAN {
         try {
             while (!server.isClosed()) {
                 Socket s = server.accept();
+                // Ajustes útiles para LAN
+                try {
+                    s.setTcpNoDelay(true);
+                    s.setKeepAlive(true);
+                } catch (SocketException ignored) {}
                 ClientHandler ch = new ClientHandler(s);
                 pool.submit(ch);
             }
@@ -124,12 +182,12 @@ public class ServidorLAN {
 
         JsonArray pendingInvokes = new JsonArray();
         JsonArray pendingEffectInvokes = new JsonArray();
-        boolean playedThisTurn = false;
+        volatile boolean playedThisTurn = false;
 
         ClientHandler(Socket s) throws IOException {
             this.socket = s;
-            this.in = new BufferedReader(new InputStreamReader(s.getInputStream()));
-            this.out = new PrintWriter(s.getOutputStream(), true);
+            this.in = new BufferedReader(new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
+            this.out = new PrintWriter(new OutputStreamWriter(s.getOutputStream(), StandardCharsets.UTF_8), true);
         }
 
         @Override
@@ -140,6 +198,7 @@ public class ServidorLAN {
 
                 String line;
                 while ((line = in.readLine()) != null) {
+                    if (line.isBlank()) continue;
                     JsonObject obj = JsonParser.parseString(line).getAsJsonObject();
                     String type = obj.has("type") ? obj.get("type").getAsString() : "";
 
@@ -333,7 +392,8 @@ public class ServidorLAN {
 
     // =================== MAIN ===================
     public static void main(String[] args) throws Exception {
-        ServidorLAN s = new ServidorLAN(PORT);
+        int port = resolvePort(DEFAULT_PORT);
+        ServidorLAN s = new ServidorLAN(port);
         s.start();
     }
 }
