@@ -17,6 +17,11 @@ import java.util.function.Consumer;
 /**
  * Cliente TCP para juego LAN de Pi-Ca-Doh!
  * Gestiona conexión, lectura asíncrona, envío JSON y eventos de red.
+ *
+ * Protocolo actualizado:
+ *  - Al presionar PLAY se envía:
+ *      { "type":"PLAY", "vidaP": <int>, "vidaE": <int> }
+ *    (el servidor usa el reporte del cliente A como estado autoritativo)
  */
 public class ClienteLAN {
 
@@ -29,11 +34,11 @@ public class ClienteLAN {
 
     private final Gson gson = new Gson();
     private final ExecutorService pool = Executors.newSingleThreadExecutor();
-    private Consumer<JsonObject> onMessage; // Listener general
+    private Consumer<JsonObject> onMessage; // Listener que setean las pantallas/juego
 
     private volatile boolean running = false;
 
-    // Referencia al juego principal (puede ser null si se usa fuera de LWJGL)
+    // Referencia al juego principal (opcional)
     private final Principal juego;
 
     // ====== Constructores ======
@@ -90,10 +95,10 @@ public class ClienteLAN {
                 System.out.println("[ClienteLAN-RECV] " + line);
                 JsonObject obj = gson.fromJson(line, JsonObject.class);
 
-                // Procesamiento interno de tipos básicos
+                // Manejo básico interno
                 handleMessage(obj);
 
-                // Listener externo (PantallaBatalla u otra clase)
+                // Callback externo (PantallaBatalla / otras)
                 if (onMessage != null) onMessage.accept(obj);
             }
         } catch (IOException e) {
@@ -119,9 +124,7 @@ public class ClienteLAN {
             case "MATCHED":
                 System.out.println("[ClienteLAN] ¡Rival encontrado! Abriendo selección de tropas...");
                 if (juego != null && Gdx.app != null) {
-                    Gdx.app.postRunnable(() -> {
-                        juego.setScreen(new mijuego.picadoh.PantallaSeleccionTropa(juego));
-                    });
+                    Gdx.app.postRunnable(() -> juego.setScreen(new mijuego.picadoh.PantallaSeleccionTropa(juego)));
                 }
                 break;
 
@@ -135,7 +138,7 @@ public class ClienteLAN {
                 break;
 
             default:
-                // Otros tipos (START, UPDATE_STATE, REVEAL, etc.) se manejan externamente
+                // START / REVEAL / otros → los maneja la pantalla vía onMessage
                 break;
         }
     }
@@ -210,12 +213,25 @@ public class ClienteLAN {
         System.out.println("[ClienteLAN] INVOKE_EFFECT -> " + className);
     }
 
-    /** Avisar que el jugador presionó PLAY */
-    public void sendPlay() {
+    /**
+     * Avisar que el jugador presionó PLAY con reporte de vidas del cliente.
+     * ¡Usar este siempre!
+     */
+    public void sendPlay(int vidaPropia, int vidaEnemiga) {
         JsonObject o = new JsonObject();
         o.addProperty("type", "PLAY");
+        o.addProperty("vidaP", vidaPropia);
+        o.addProperty("vidaE", vidaEnemiga);
         sendJson(o);
-        System.out.println("[ClienteLAN] PLAY enviado.");
+        System.out.println("[ClienteLAN] PLAY enviado con vidas -> propia=" + vidaPropia + " / enemiga=" + vidaEnemiga);
+    }
+
+    /**
+     * Fallback (no recomendado). Mantengo por compatibilidad.
+     * Llama a sendPlay con -1/-1 (el servidor ignorará esos valores).
+     */
+    public void sendPlay() {
+        sendPlay(-1, -1);
     }
 
     // ====== Listener de mensajes externos ======

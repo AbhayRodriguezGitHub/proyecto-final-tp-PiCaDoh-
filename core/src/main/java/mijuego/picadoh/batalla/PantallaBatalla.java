@@ -36,6 +36,11 @@ import java.util.Optional;
  * - Al presionar PLAY se envía PLAY y se inicia reintento hasta recibir REVEAL.
  * - Al recibir REVEAL se aplica lo revelado y se ejecuta la fase de combate.
  * - Si no llega REVEAL tras N reintentos, se resuelve localmente (fallback offline).
+ *
+ * Cambios clave:
+ * - Efectos sincronizados para ambos clientes.
+ * - Duración de 1 turno con reversión garantizada.
+ * - Limpieza visual del efecto en ambos lados al finalizar el combate.
  */
 public class PantallaBatalla implements Screen {
 
@@ -95,12 +100,20 @@ public class PantallaBatalla implements Screen {
     private int indiceEfectoTomado = -1;
     private boolean hoverRanuraEfectoJugador = false;
 
-    private CartaEfecto efectoEnRanuraJugador = null;
-    private boolean efectoAplicadoEsteTurno = false;
+    // --- LAN estricto: sin fallback offline si hay cliente LAN ---
+    private final boolean lanModoEstricto;
+    private boolean revealRecibidoEsteTurno = false; // sólo para depurar/diagnosticar
 
+
+    // Efecto propio y enemigo mostrados en la UI del turno actual
+    private CartaEfecto efectoEnRanuraJugador = null;
     private CartaEfecto efectoEnRanuraEnemigo = null;
 
-    // Snapshot para revertir buff/debuff aplicados por efecto de turno
+    // Flags de aplicación por turno
+    private boolean efectoJugadorAplicadoEsteTurno = false;
+    private boolean efectoEnemigoAplicadoEsteTurno = false;
+
+    // Snapshots para revertir buff/debuff aplicados por efecto de turno (propio y enemigo)
     private static class SnapshotStats {
         final CartaTropa tropa;
         final int deltaAtk;
@@ -110,16 +123,12 @@ public class PantallaBatalla implements Screen {
         }
         void revertir() {
             if (tropa == null) return;
-            // Se asume que CartaTropa tiene setAtaque/setDefensa
-            try {
-                tropa.setAtaque(Math.max(0, tropa.getAtaque() - deltaAtk));
-            } catch (Throwable ignored) {}
-            try {
-                tropa.setDefensa(Math.max(0, tropa.getDefensa() - deltaDef));
-            } catch (Throwable ignored) {}
+            try { tropa.setAtaque(Math.max(0, tropa.getAtaque() - deltaAtk)); } catch (Throwable ignored) {}
+            try { tropa.setDefensa(Math.max(0, tropa.getDefensa() - deltaDef)); } catch (Throwable ignored) {}
         }
     }
-    private final List<SnapshotStats> snapshotsEfectoTurno = new ArrayList<>();
+    private final List<SnapshotStats> snapshotsEfectoTurnoJugador = new ArrayList<>();
+    private final List<SnapshotStats> snapshotsEfectoTurnoEnemigo = new ArrayList<>();
 
     private final float ANCHO_CARTA = 100f;
     private final float ALTURA_CARTA = 150f;
@@ -231,6 +240,8 @@ public class PantallaBatalla implements Screen {
 
         this.contexto = contexto;
         this.efectosDisponibles = efectosDisponibles;
+
+        this.lanModoEstricto = (juego.clienteLAN != null);
 
         this.manoTropas = new ArrayList<>();
         this.manoEfectos = new ArrayList<>();
@@ -496,32 +507,11 @@ public class PantallaBatalla implements Screen {
                             System.out.println("[LAN] Error al enviar INVOKE_EFFECT: " + ex.getMessage());
                         }
 
+                        // Efectos instantáneos: se aplican ya mismo (al lado local)
                         if (efectoEnRanuraJugador.esInstantaneo()) {
                             try {
-                                contexto.setTropaSeleccionada(null);
-                                efectoEnRanuraJugador.aplicarEfecto(contexto);
-
-                                // Limpiezas solicitadas por efectos instantáneos
-                                if (contexto.isPurgaPorNivelSolicitada()) {
-                                    for (int i = 0; i < ranuras.size(); i++) {
-                                        if (ranuras.get(i).getCarta() != null) {
-                                            int nivel = ranuras.get(i).getCarta().getNivel();
-                                            if (contexto.getNivelesAPurgar().contains(nivel)) {
-                                                ranuras.get(i).setCarta(null);
-                                            }
-                                        }
-                                    }
-                                    contexto.limpiarPurgaPorNivelSolicitud();
-                                }
-
-                                if (contexto.isLimpiarCampoSolicitado()) {
-                                    for (int i = 0; i < ranuras.size(); i++) {
-                                        ranuras.get(i).setCarta(null);
-                                    }
-                                    contexto.setLimpiarCampoSolicitado(false);
-                                }
-
-                                efectoAplicadoEsteTurno = true;
+                                aplicarEfectoLado(true /*jugador*/, true /*instantaneo*/);
+                                efectoJugadorAplicadoEsteTurno = true; // para que no se reaplique
                             } catch (Exception ex) {
                                 System.out.println("[EFECTO] Error en aplicación instantánea: " + ex.getMessage());
                             }
@@ -584,30 +574,34 @@ public class PantallaBatalla implements Screen {
     private void onPlayButtonPressed() {
         if (partidaTerminada || batallaEnCurso) return;
 
-        // Evita múltiples clics/duplicados
-        if (esperandoReveal) {
+        if (esperandoReveal) { // anti doble clic
             System.out.println("[PLAY] Ya esperando REVEAL. Ignorado.");
             return;
         }
 
         boolean sent = enviarPlay();
         if (!sent) {
-            // Sin LAN: modo offline
-            iniciarBatallaConSiguiente();
+            // Sólo permitimos fallback si NO hay LAN
+            if (juego.clienteLAN == null) {
+                iniciarBatallaConSiguiente();
+            } else {
+                System.out.println("[PLAY] Cliente LAN presente pero no se pudo enviar PLAY. Se seguirá esperando (sin fallback).");
+            }
         }
     }
 
     private boolean enviarPlay() {
         try {
             if (juego.clienteLAN != null) {
-                juego.clienteLAN.sendPlay();
+                // IMPORTANTE: enviar vidas actuales
+                juego.clienteLAN.sendPlay(contexto.getVidaPropia(), contexto.getVidaEnemiga());
                 esperandoReveal = true;
                 playEnviadoEsteTurno = true;
                 reintentosRealizados = 0;
                 tiempoDesdeEspera = 0f;
                 tiempoHastaReintento = INTERVALO_REINTENTO;
-
                 mostrarBotonSiguiente = false;
+                revealRecibidoEsteTurno = false;
                 System.out.println("[CLIENTE-LAN] PLAY enviado. Esperando REVEAL...");
                 return true;
             }
@@ -631,33 +625,88 @@ public class PantallaBatalla implements Screen {
         }
     }
 
-    private void ejecutarBatalla() {
-        // Aplicar efecto en ranura del jugador si corresponde
-        if (efectoEnRanuraJugador != null && !efectoAplicadoEsteTurno) {
-            try {
-                snapshotsEfectoTurno.clear();
-                for (int i = 0; i < 5; i++) {
-                    CartaTropa t = ranuras.get(i).getCarta();
-                    if (t == null) continue;
+    // Aplica el efecto del lado indicado (true: jugador / false: enemigo).
+    // Si instantaneo=true se saltea la toma de snapshots (ya que el efecto podría limpiar tablero etc.)
+    private void aplicarEfectoLado(boolean jugador, boolean instantaneo) {
+        CartaEfecto efecto = jugador ? efectoEnRanuraJugador : efectoEnRanuraEnemigo;
+        if (efecto == null) return;
 
-                    int atkAntes = t.getAtaque();
-                    int defAntes = t.getDefensa();
+        List<SnapshotStats> snapshots = jugador ? snapshotsEfectoTurnoJugador : snapshotsEfectoTurnoEnemigo;
+        snapshots.clear();
 
-                    contexto.setTropaSeleccionada(t);
-                    efectoEnRanuraJugador.aplicarEfecto(contexto);
+        int start = jugador ? 0 : 5;
+        int end   = jugador ? 5 : 10;
 
-                    int deltaAtk = t.getAtaque() - atkAntes;
-                    int deltaDef = t.getDefensa() - defAntes;
+        for (int i = start; i < end; i++) {
+            CartaTropa t = ranuras.get(i).getCarta();
+            if (t == null) continue;
 
-                    snapshotsEfectoTurno.add(new SnapshotStats(t, deltaAtk, deltaDef));
-                }
-                contexto.setTropaSeleccionada(null);
-            } catch (Exception e) {
-                System.out.println("[EFECTO] Error aplicando efecto: " + e.getMessage());
+            int atkAntes = t.getAtaque();
+            int defAntes = t.getDefensa();
+
+            // Aplicamos con la perspectiva apropiada para que el efecto impacte en el lado correcto
+            if (jugador) {
+                contexto.applyEffectAsPlayer(efecto);
+            } else {
+                contexto.applyEffectAsEnemy(efecto);
             }
-            efectoAplicadoEsteTurno = true;
+
+            // Si el efecto dependía de una selección, informamos qué tropa se está afectando
+            contexto.setTropaSeleccionada(t);
+            try {
+                // Muchos efectos usan getTropaSeleccionada(); garantizamos que esté seteado.
+                efecto.aplicarEfecto(contexto);
+            } catch (Exception ex) {
+                System.out.println("[EFECTO] Error aplicando efecto en " + (jugador ? "jugador" : "enemigo") + ": " + ex.getMessage());
+            } finally {
+                contexto.setTropaSeleccionada(null);
+            }
+
+            if (!instantaneo) {
+                int deltaAtk = t.getAtaque() - atkAntes;
+                int deltaDef = t.getDefensa() - defAntes;
+                snapshots.add(new SnapshotStats(t, deltaAtk, deltaDef));
+            }
         }
 
+        // Limpiezas globales solicitadas por efectos (purga / limpiar campo)
+        if (contexto.isPurgaPorNivelSolicitada()) {
+            for (int i = 0; i < ranuras.size(); i++) {
+                if (ranuras.get(i).getCarta() != null) {
+                    int nivel = ranuras.get(i).getCarta().getNivel();
+                    if (contexto.getNivelesAPurgar().contains(nivel)) {
+                        ranuras.get(i).setCarta(null);
+                    }
+                }
+            }
+            contexto.limpiarPurgaPorNivelSolicitud();
+        }
+        if (contexto.isLimpiarCampoSolicitado()) {
+            for (int i = 0; i < ranuras.size(); i++) ranuras.get(i).setCarta(null);
+            contexto.setLimpiarCampoSolicitado(false);
+        }
+    }
+
+    private void ejecutarBatalla() {
+        // 1) Aplicar efectos de ambos lados si aún no se aplicaron este turno.
+        if (efectoEnRanuraJugador != null && !efectoJugadorAplicadoEsteTurno) {
+            try {
+                aplicarEfectoLado(true, false);
+                efectoJugadorAplicadoEsteTurno = true;
+            } catch (Exception e) {
+                System.out.println("[EFECTO] Error aplicando efecto del jugador: " + e.getMessage());
+            }
+        }
+        if (efectoEnRanuraEnemigo != null && !efectoEnemigoAplicadoEsteTurno) {
+            try {
+                aplicarEfectoLado(false, false);
+                efectoEnemigoAplicadoEsteTurno = true;
+            } catch (Exception e) {
+                System.out.println("[EFECTO] Error aplicando efecto del enemigo: " + e.getMessage());
+            }
+        }
+
+        // 2) Iniciar animación/combate por columnas
         ranuraActual = 0;
         tiempoHighlight = 0f;
         batallaEnCurso = true;
@@ -729,28 +778,43 @@ public class PantallaBatalla implements Screen {
 
             if (tiempoHastaReintento <= 0f && reintentosRealizados < MAX_REINTENTOS_PLAY) {
                 try {
-                    juego.clienteLAN.sendPlay();
+                    // [SYNC VIDA] Reenviar también vidas si existe ese overload
+                    try {
+                        int vidaP = contexto.getVidaPropia();
+                        int vidaE = contexto.getVidaEnemiga();
+                        juego.clienteLAN.getClass()
+                            .getMethod("sendPlay", int.class, int.class)
+                            .invoke(juego.clienteLAN, vidaP, vidaE);
+                        System.out.println("[CLIENTE-LAN] Reenvío PLAY con vidas P=" + vidaP + " E=" + vidaE +
+                            " (" + (reintentosRealizados+1) + "/" + MAX_REINTENTOS_PLAY + ")");
+                    } catch (Throwable noOverload) {
+                        juego.clienteLAN.sendPlay();
+                        System.out.println("[CLIENTE-LAN] Reenvío PLAY (sin vidas por overload) " +
+                            "(" + (reintentosRealizados+1) + "/" + MAX_REINTENTOS_PLAY + ")");
+                    }
+
                     reintentosRealizados++;
                     tiempoHastaReintento = INTERVALO_REINTENTO;
-                    System.out.println("[CLIENTE-LAN] Reenvío PLAY (" + reintentosRealizados + "/" + MAX_REINTENTOS_PLAY + ")");
                 } catch (Exception ex) {
                     System.out.println("[CLIENTE-LAN] Error reenvío PLAY: " + ex.getMessage());
                 }
             }
-
-            // Fallback: si no llega REVEAL después de X reintentos, resolvemos localmente
             if (reintentosRealizados >= MAX_REINTENTOS_PLAY) {
-                System.out.println("[CLIENTE-LAN] Timeout de REVEAL: forzando resolución local.");
-                esperandoReveal = false;
-                reintentosRealizados = 0;
-                tiempoDesdeEspera = 0f;
-                tiempoHastaReintento = 0f;
-                if (!batallaEnCurso) {
-                    iniciarBatallaConSiguiente();
+                if (lanModoEstricto) {
+                    // Modo estricto: NO resolver localmente; seguimos esperando.
+                    // Sólo reintentar y mostrar overlay.
+                    tiempoHastaReintento = INTERVALO_REINTENTO;
+                    System.out.println("[CLIENTE-LAN] Timeout REVEAL (modo estricto). Se sigue esperando sin fallback.");
+                } else {
+                    System.out.println("[CLIENTE-LAN] Timeout de REVEAL: forzando resolución local (fallback OFFLINE).");
+                    esperandoReveal = false;
+                    reintentosRealizados = 0;
+                    tiempoDesdeEspera = 0f;
+                    tiempoHastaReintento = 0f;
+                    if (!batallaEnCurso) iniciarBatallaConSiguiente();
                 }
             }
         }
-
         viewport.apply();
         batch.setProjectionMatrix(camera.combined);
         shapeRenderer.setProjectionMatrix(camera.combined);
@@ -882,24 +946,29 @@ public class PantallaBatalla implements Screen {
                     mostrarBotonSiguiente = false;
                     ranuraActual = -1;
 
-                    // Revertir buffs temporales aplicados por efecto de turno
-                    if (!snapshotsEfectoTurno.isEmpty()) {
-                        for (SnapshotStats s : snapshotsEfectoTurno) s.revertir();
-                        snapshotsEfectoTurno.clear();
+                    // Revertir buffs temporales aplicados por efecto de turno (ambos lados)
+                    if (!snapshotsEfectoTurnoJugador.isEmpty()) {
+                        for (SnapshotStats s : snapshotsEfectoTurnoJugador) s.revertir();
+                        snapshotsEfectoTurnoJugador.clear();
+                    }
+                    if (!snapshotsEfectoTurnoEnemigo.isEmpty()) {
+                        for (SnapshotStats s : snapshotsEfectoTurnoEnemigo) s.revertir();
+                        snapshotsEfectoTurnoEnemigo.clear();
                     }
 
-                    // Revertir flags de efecto de ContextoBatalla
+                    // Revertir flags/solicitudes de efecto de ContextoBatalla
                     contexto.revertirEfectosTurno();
 
+                    // Limpiar ranuras de efecto (duran 1 turno) y flags de aplicación
+                    if (efectoEnRanuraJugador != null) efectoEnRanuraJugador = null;
+                    if (efectoEnRanuraEnemigo != null) efectoEnRanuraEnemigo = null;
+                    efectoJugadorAplicadoEsteTurno = false;
+                    efectoEnemigoAplicadoEsteTurno = false;
+
+                    // Control de invocaciones
                     if (!contexto.isInvocacionesIlimitadasEsteTurno()
                         && invocacionesTropaEsteTurno >= MAX_INVOC_TROPAS_TURNO) {
                         System.out.println("[INVOCACIÓN] Límite de invocaciones alcanzado.");
-                    }
-
-                    // Limpiar ranura de efecto propio si era de 1 turno
-                    if (efectoEnRanuraJugador != null) {
-                        efectoEnRanuraJugador = null;
-                        efectoAplicadoEsteTurno = false;
                     }
 
                     if (turnoActual < MAX_TURNO) {
@@ -1101,39 +1170,69 @@ public class PantallaBatalla implements Screen {
             }
 
             if ("REVEAL".equals(type)) {
-                // Entramos al hilo de render de LibGDX
                 Gdx.app.postRunnable(() -> {
                     System.out.println("[LAN-RECV] REVEAL: " + json.toString());
 
+                    // 1) PISAR VIDAS PRIMERO con lo que diga el servidor
                     try {
-                        if (json.has("playerInvokes")) {
-                            applyPlayerInvokesFromJsonArray(json.getAsJsonArray("playerInvokes"));
-                        }
-                        if (json.has("enemyInvokes")) {
-                            applyEnemyInvokesFromJsonArray(json.getAsJsonArray("enemyInvokes"));
-                        }
-                        if (json.has("playerEffectInvokes")) {
-                            applyPlayerEffectInvokesFromJsonArray(json.getAsJsonArray("playerEffectInvokes"));
-                        }
-                        if (json.has("enemyEffectInvokes")) {
-                            applyEnemyEffectInvokesFromJsonArray(json.getAsJsonArray("enemyEffectInvokes"));
-                        }
+                        if (json.has("vidaP")) contexto.setVidaPropia(json.get("vidaP").getAsInt());
+                        if (json.has("vidaE")) contexto.setVidaEnemiga(json.get("vidaE").getAsInt());
+                        System.out.println("[SYNC VIDA] Jugador=" + contexto.getVidaPropia() +
+                            " / Enemigo=" + contexto.getVidaEnemiga());
+                    } catch (Exception e) {
+                        System.out.println("[SYNC VIDA] Error al sincronizar vidas del REVEAL: " + e.getMessage());
+                    }
+
+                    // 2) Aplicar invocaciones y efectos revelados por el servidor
+                    try {
+                        if (json.has("playerInvokes"))        applyPlayerInvokesFromJsonArray(json.getAsJsonArray("playerInvokes"));
+                        if (json.has("enemyInvokes"))         applyEnemyInvokesFromJsonArray(json.getAsJsonArray("enemyInvokes"));
+                        if (json.has("playerEffectInvokes"))  applyPlayerEffectInvokesFromJsonArray(json.getAsJsonArray("playerEffectInvokes"));
+                        if (json.has("enemyEffectInvokes"))   applyEnemyEffectInvokesFromJsonArray(json.getAsJsonArray("enemyEffectInvokes"));
                     } catch (Exception e) {
                         System.out.println("[LAN-RECV] Error aplicando REVEAL: " + e.getMessage());
                     }
 
-                    // Limpia espera y ejecuta combate (si aún no se ejecutó por fallback)
+                    // 3) Salir del estado de espera
                     esperandoReveal = false;
                     reintentosRealizados = 0;
                     tiempoDesdeEspera = 0f;
                     tiempoHastaReintento = 0f;
+                    revealRecibidoEsteTurno = true;
 
+                    // 4) (MUY IMPORTANTE) Si ya hay fin de partida con estas vidas, terminar sin animar
+                    if (!partidaTerminada) {
+                        int vp = contexto.getVidaPropia();
+                        int ve = contexto.getVidaEnemiga();
+
+                        if (ve <= 0 && vp > 0) {
+                            partidaTerminada = true;
+                            juego.reproducirMusicaVictoria();
+                            juego.setScreen(new PantallaVictoria(juego));
+                            return;
+                        }
+                        if (vp <= 0 && ve > 0) {
+                            partidaTerminada = true;
+                            juego.reproducirMusicaDerrota();
+                            juego.setScreen(new PantallaDerrota(juego));
+                            return;
+                        }
+                        if (vp <= 0 && ve <= 0) {
+                            partidaTerminada = true;
+                            juego.reproducirMusicaDerrota();
+                            juego.setScreen(new PantallaDerrota(juego));
+                            return;
+                        }
+                    }
+
+                    // 5) Iniciar animación de combate del turno (ambos clientes parten del MISMO estado)
                     if (!batallaEnCurso && !partidaTerminada) {
                         iniciarBatallaConSiguiente();
                     }
                 });
                 return;
             }
+
 
             if ("OPPONENT_DISCONNECTED".equals(type)) {
                 System.out.println("[CLIENTE-LAN] Rival desconectado.");
@@ -1195,6 +1294,12 @@ public class PantallaBatalla implements Screen {
                     if (efecto != null) {
                         efectoEnRanuraJugador = efecto;
                         System.out.println("[LAN-APPLY] player effect " + cls);
+
+                        if (efecto.esInstantaneo()) {
+                            // Aplicar inmediatamente del lado local
+                            aplicarEfectoLado(true, true);
+                            efectoJugadorAplicadoEsteTurno = true;
+                        }
                     }
                 }
             } catch (Exception ex) {
@@ -1212,13 +1317,14 @@ public class PantallaBatalla implements Screen {
                 if (cls != null) {
                     CartaEfecto efecto = createEfectoInstanceByName(cls);
                     if (efecto != null) {
-                        // Evita re-aplicaciones: sólo setea si no hay uno ya colocado
                         if (efectoEnRanuraEnemigo == null) {
                             efectoEnRanuraEnemigo = efecto;
                             System.out.println("[LAN-APPLY] enemy effect " + cls);
 
                             if (efecto.esInstantaneo()) {
-                                aplicarEfectoEnemigoInstantaneo(efecto);
+                                // Aplicar inmediatamente del lado enemigo (desde mi perspectiva)
+                                aplicarEfectoLado(false, true);
+                                efectoEnemigoAplicadoEsteTurno = true;
                             }
                         }
                     }
@@ -1226,21 +1332,6 @@ public class PantallaBatalla implements Screen {
             } catch (Exception ex) {
                 System.out.println("[LAN-ERR] applyEnemyEffectInvokes: " + ex.getMessage());
             }
-        }
-    }
-
-    private void aplicarEfectoEnemigoInstantaneo(CartaEfecto efecto) {
-        try {
-            for (int i = 5; i < 10; i++) {
-                CartaTropa t = ranuras.get(i).getCarta();
-                if (t != null) {
-                    contexto.setTropaSeleccionada(t);
-                    efecto.aplicarEfecto(contexto);
-                }
-            }
-            contexto.setTropaSeleccionada(null);
-        } catch (Exception ex) {
-            System.out.println("[LAN-ERR] aplicarEfectoEnemigoInstantaneo: " + ex.getMessage());
         }
     }
 

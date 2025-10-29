@@ -1,16 +1,9 @@
 package mijuego.red;
 
 import com.google.gson.*;
-
 import javax.swing.*;
-import javax.swing.ImageIcon;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.SwingConstants;
-
 import java.awt.Color;
 import java.awt.Font;
-
 import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
@@ -21,7 +14,14 @@ import java.util.concurrent.*;
 
 /**
  * Servidor TCP sincronizado para partidas 1v1.
- * Envía MATCHED, START y REVEAL (con invocaciones y efectos del turno).
+ * Controla las conexiones, emparejamiento y sincroniza invocaciones, efectos y vidas.
+ *
+ * 🔁 Protocolo actualizado:
+ * - Cada cliente envía "PLAY" con:
+ *      { "type": "PLAY", "vidaP": <int>, "vidaE": <int> }
+ * - El servidor usa las vidas reportadas por el cliente A como fuente oficial
+ *   y las replica al cliente B en el REVEAL siguiente.
+ * - Incluye ventana con imagen SERVIDOR.png (si existe).
  */
 public class ServidorLAN {
 
@@ -37,12 +37,23 @@ public class ServidorLAN {
     private static class Match {
         final ClientHandler a;
         final ClientHandler b;
-        final BattleState state = new BattleState();
+        int vidaA = 80;
+        int vidaB = 80;
         boolean partidaIniciada = false;
+
+        // vidas reportadas este turno
+        Integer vidaA_prop = null;
+        Integer vidaA_enemy = null;
+        Integer vidaB_prop = null;
+        Integer vidaB_enemy = null;
 
         Match(ClientHandler a, ClientHandler b) {
             this.a = a;
             this.b = b;
+        }
+
+        void clearTurnReports() {
+            vidaA_prop = vidaA_enemy = vidaB_prop = vidaB_enemy = null;
         }
     }
 
@@ -57,9 +68,11 @@ public class ServidorLAN {
         SwingUtilities.invokeLater(() -> {
             JFrame frame = new JFrame("SERVIDOR LAN");
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
             String ruta = "lwjgl3/assets/lan/SERVIDOR.png";
             File file = new File(ruta);
             JLabel label;
+
             if (file.exists()) {
                 label = new JLabel(new ImageIcon(file.getAbsolutePath()));
             } else {
@@ -69,6 +82,7 @@ public class ServidorLAN {
                 label.setBackground(Color.DARK_GRAY);
                 label.setOpaque(true);
             }
+
             frame.add(label);
             frame.pack();
             frame.setResizable(false);
@@ -157,10 +171,26 @@ public class ServidorLAN {
                             pendingEffectInvokes.add(eff);
                             break;
 
-                        case "PLAY":
+                        case "PLAY": {
                             this.playedThisTurn = true;
-                            if (match != null) checkAndSendReveal(match);
+                            if (match != null) {
+                                int vidaP = safeGetInt(obj, "vidaP", -1);
+                                int vidaE = safeGetInt(obj, "vidaE", -1);
+                                boolean soyA = (match.a == this);
+
+                                if (vidaP >= 0 && vidaE >= 0) {
+                                    if (soyA) {
+                                        match.vidaA_prop = vidaP;
+                                        match.vidaA_enemy = vidaE;
+                                    } else {
+                                        match.vidaB_prop = vidaP;
+                                        match.vidaB_enemy = vidaE;
+                                    }
+                                }
+                                checkAndSendReveal(match);
+                            }
                             break;
+                        }
 
                         default:
                             System.out.println("[ServidorLAN] Mensaje desconocido: " + type);
@@ -182,28 +212,25 @@ public class ServidorLAN {
 
             match.partidaIniciada = true;
 
-            JsonObject msgA = new JsonObject();
-            msgA.addProperty("type", "START");
-            msgA.add("playerTropas", listToJsonArray(this.tropas));
-            msgA.add("playerEfectos", listToJsonArray(this.efectos));
-            msgA.add("enemyTropas", listToJsonArray(rival.tropas));
-            msgA.add("enemyEfectos", listToJsonArray(rival.efectos));
-            msgA.addProperty("vidaP", match.state.vidaA);
-            msgA.addProperty("vidaE", match.state.vidaB);
-
-            JsonObject msgB = new JsonObject();
-            msgB.addProperty("type", "START");
-            msgB.add("playerTropas", listToJsonArray(rival.tropas));
-            msgB.add("playerEfectos", listToJsonArray(rival.efectos));
-            msgB.add("enemyTropas", listToJsonArray(this.tropas));
-            msgB.add("enemyEfectos", listToJsonArray(this.efectos));
-            msgB.addProperty("vidaP", match.state.vidaB);
-            msgB.addProperty("vidaE", match.state.vidaA);
+            JsonObject msgA = buildStart(this, rival, match.vidaA, match.vidaB);
+            JsonObject msgB = buildStart(rival, this, match.vidaB, match.vidaA);
 
             match.a.send(gson.toJson(msgA));
             match.b.send(gson.toJson(msgB));
 
             System.out.println("[ServidorLAN] START enviado a ambos jugadores.");
+        }
+
+        private JsonObject buildStart(ClientHandler player, ClientHandler enemy, int vidaP, int vidaE) {
+            JsonObject o = new JsonObject();
+            o.addProperty("type", "START");
+            o.add("playerTropas", listToJsonArray(player.tropas));
+            o.add("playerEfectos", listToJsonArray(player.efectos));
+            o.add("enemyTropas", listToJsonArray(enemy.tropas));
+            o.add("enemyEfectos", listToJsonArray(enemy.efectos));
+            o.addProperty("vidaP", vidaP);
+            o.addProperty("vidaE", vidaE);
+            return o;
         }
 
         private void close() {
@@ -225,67 +252,72 @@ public class ServidorLAN {
     private synchronized void enqueueAndMatch(ClientHandler ch) {
         if (waiting.contains(ch)) return;
         waiting.add(ch);
-
-        System.out.println("[ServidorLAN] Cliente pide unirse a la cola... Total en espera: " + waiting.size());
-
         if (waiting.size() >= 2) {
-            ClientHandler jugador1 = waiting.poll();
-            ClientHandler jugador2 = waiting.poll();
-            if (jugador1 == null || jugador2 == null) return;
-
-            Match match = new Match(jugador1, jugador2);
-            matches.put(jugador1, match);
-            matches.put(jugador2, match);
-            jugador1.match = match;
-            jugador2.match = match;
-
-            jugador1.send(gson.toJson(Map.of("type", "MATCHED")));
-            jugador2.send(gson.toJson(Map.of("type", "MATCHED")));
-
+            ClientHandler j1 = waiting.poll();
+            ClientHandler j2 = waiting.poll();
+            if (j1 == null || j2 == null) return;
+            Match m = new Match(j1, j2);
+            matches.put(j1, m);
+            matches.put(j2, m);
+            j1.match = m;
+            j2.match = m;
+            j1.send(gson.toJson(Map.of("type", "MATCHED")));
+            j2.send(gson.toJson(Map.of("type", "MATCHED")));
             System.out.println("[ServidorLAN] Jugadores emparejados!");
         }
     }
 
     // =================== REVEAL ===================
-    private void checkAndSendReveal(Match m) {
+    private synchronized void checkAndSendReveal(Match m) {
         ClientHandler A = m.a;
         ClientHandler B = m.b;
         if (!A.playedThisTurn || !B.playedThisTurn) return;
 
-        // Construir y enviar REVEAL para A (player = A, enemy = B)
-        JsonObject revealA = new JsonObject();
-        revealA.addProperty("type", "REVEAL");
-        revealA.add("playerInvokes", A.pendingInvokes.deepCopy());
-        revealA.add("enemyInvokes", B.pendingInvokes.deepCopy());
-        revealA.add("playerEffectInvokes", A.pendingEffectInvokes.deepCopy());
-        revealA.add("enemyEffectInvokes", B.pendingEffectInvokes.deepCopy());
-        A.send(gson.toJson(revealA));
+        // Usar valores del cliente A como referencia global
+        if (m.vidaA_prop != null && m.vidaA_enemy != null) {
+            m.vidaA = m.vidaA_prop;
+            m.vidaB = m.vidaA_enemy;
+        } else if (m.vidaB_prop != null && m.vidaB_enemy != null) {
+            m.vidaA = m.vidaB_enemy;
+            m.vidaB = m.vidaB_prop;
+        }
 
-        // Construir y enviar REVEAL para B (player = B, enemy = A)
-        JsonObject revealB = new JsonObject();
-        revealB.addProperty("type", "REVEAL");
-        revealB.add("playerInvokes", B.pendingInvokes.deepCopy());
-        revealB.add("enemyInvokes", A.pendingInvokes.deepCopy());
-        revealB.add("playerEffectInvokes", B.pendingEffectInvokes.deepCopy());
-        revealB.add("enemyEffectInvokes", A.pendingEffectInvokes.deepCopy());
+        // Construir mensajes REVEAL
+        JsonObject revealA = buildReveal(A, B, m.vidaA, m.vidaB);
+        JsonObject revealB = buildReveal(B, A, m.vidaB, m.vidaA);
+
+        A.send(gson.toJson(revealA));
         B.send(gson.toJson(revealB));
 
-        System.out.println("[ServidorLAN] REVEAL enviado a ambos jugadores.");
+        System.out.println("[ServidorLAN] REVEAL enviado. Vidas => A:" + m.vidaA + " / B:" + m.vidaB);
 
-        // Reset turno
+        // Reset de estado del turno
         A.pendingInvokes = new JsonArray();
-        B.pendingInvokes = new JsonArray();
         A.pendingEffectInvokes = new JsonArray();
-        B.pendingEffectInvokes = new JsonArray();
         A.playedThisTurn = false;
+
+        B.pendingInvokes = new JsonArray();
+        B.pendingEffectInvokes = new JsonArray();
         B.playedThisTurn = false;
+
+        m.clearTurnReports();
     }
 
-    // =================== HELPERS ===================
+    private JsonObject buildReveal(ClientHandler player, ClientHandler enemy, int vidaP, int vidaE) {
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "REVEAL");
+        o.add("playerInvokes", player.pendingInvokes.deepCopy());
+        o.add("enemyInvokes", enemy.pendingInvokes.deepCopy());
+        o.add("playerEffectInvokes", player.pendingEffectInvokes.deepCopy());
+        o.add("enemyEffectInvokes", enemy.pendingEffectInvokes.deepCopy());
+        o.addProperty("vidaP", vidaP);
+        o.addProperty("vidaE", vidaE);
+        return o;
+    }
+
     private List<String> jsonArrayToList(JsonArray arr) {
         List<String> out = new ArrayList<>();
-        if (arr == null) return out;
-        for (JsonElement e : arr) out.add(e.getAsString());
+        if (arr != null) for (JsonElement e : arr) out.add(e.getAsString());
         return out;
     }
 
@@ -293,6 +325,10 @@ public class ServidorLAN {
         JsonArray a = new JsonArray();
         if (list != null) for (String s : list) a.add(s);
         return a;
+    }
+
+    private int safeGetInt(JsonObject o, String key, int def) {
+        try { return o.has(key) ? o.get(key).getAsInt() : def; } catch (Exception ignored) { return def; }
     }
 
     // =================== MAIN ===================
