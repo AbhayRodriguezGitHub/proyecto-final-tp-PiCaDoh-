@@ -57,9 +57,12 @@ public class PantallaSeleccionTropa implements Screen {
     @Override
     public void show() {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/ELECCIONTROPA.png"));
+
+        // 🚫 Evitar superposición de músicas: apagamos TODO y luego sí ponemos la de selección
+        juego.detenerTodasLasMusicas();
         juego.reproducirMusicaSeleccion();
 
-        // Cámara + Viewport (mantiene proporción; agrega barras si hace falta)
+        // Cámara + Viewport
         camara = new OrthographicCamera();
         viewport = new FitViewport(VW, VH, camara);
         viewport.apply(true);
@@ -110,7 +113,7 @@ public class PantallaSeleccionTropa implements Screen {
         cartaSeleccionada = null;
 
         if (cartasElegidas.size() >= 15) {
-            // --- Opción B: enviamos tropas al servidor y seguimos localmente con la pantalla de efectos ---
+            // Enviar tropas al servidor (no bloqueante)
             if (juego != null && juego.clienteLAN != null) {
                 try {
                     List<String> claseNames = new ArrayList<>();
@@ -119,16 +122,14 @@ public class PantallaSeleccionTropa implements Screen {
                     }
                     System.out.println("[CLIENTE-LAN] Enviando tropas elegidas al servidor (no bloqueante)...");
                     juego.clienteLAN.sendTroopReady(claseNames);
-                    // Nota: no esperamos respuesta aquí; el servidor usará la info cuando ambos clientes envíen tropas/efectos.
                 } catch (Exception ex) {
                     System.out.println("[CLIENTE-LAN] Error al enviar tropas al servidor: " + ex.getMessage());
-                    // seguimos localmente aunque falle el envío
                 }
             } else {
                 System.out.println("[OFFLINE] No hay clienteLAN: no se enviarán tropas (modo offline).");
             }
 
-            // Avanzamos localmente a la pantalla de selección de efectos
+            // Avance local a efectos
             juego.setScreen(new PantallaSeleccionEfecto(juego, cartasElegidas));
             dispose();
         } else {
@@ -138,7 +139,6 @@ public class PantallaSeleccionTropa implements Screen {
 
     private void generarNuevoParDeCartas() {
         try {
-            // seguridad: si no hay clases disponibles, no intentar
             if (clasesDisponibles == null || clasesDisponibles.size() < 2) {
                 carta1 = null;
                 carta2 = null;
@@ -162,7 +162,6 @@ public class PantallaSeleccionTropa implements Screen {
     public void render(float delta) {
         ScreenUtils.clear(0, 0, 0, 1);
 
-        // Proyectar el batch con la cámara del viewport (reescalado correcto)
         juego.batch.setProjectionMatrix(camara.combined);
 
         juego.batch.begin();
@@ -185,10 +184,7 @@ public class PantallaSeleccionTropa implements Screen {
     }
 
     @Override
-    public void resize(int width, int height) {
-        viewport.update(width, height, true);
-    }
-
+    public void resize(int width, int height) { viewport.update(width, height, true); }
     @Override public void pause() {}
     @Override public void resume() {}
     @Override public void hide() {}
@@ -198,6 +194,5 @@ public class PantallaSeleccionTropa implements Screen {
         if (fondo != null) fondo.dispose();
         if (carta1 != null) carta1.dispose();
         if (carta2 != null) carta2.dispose();
-        // No dispondremos cartasElegidas: las pasa PantallaSeleccionEfecto (que las usará para la batalla)
     }
 }

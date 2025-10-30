@@ -133,6 +133,33 @@ public class Principal extends Game {
         }
     }
 
+    // ───────────────────────────────
+// Control total de músicas
+// ───────────────────────────────
+
+    /** Detiene las músicas de batalla (ambas pistas). */
+    public void detenerMusicaBatalla() {
+        if (musicaBatalla1 != null) musicaBatalla1.stop();
+        if (musicaBatalla2 != null) musicaBatalla2.stop();
+    }
+
+    /** Detiene las músicas de condición (victoria / derrota / empate). */
+    public void detenerMusicaCondicion() {
+        if (musicaVictoria != null) musicaVictoria.stop();
+        if (musicaDerrota != null)  musicaDerrota.stop();
+        if (musicaEmpate != null)   musicaEmpate.stop();
+    }
+
+    /** Apaga absolutamente TODAS las músicas activas del juego. */
+    public void detenerTodasLasMusicas() {
+        detenerMusicaActual();     // la que esté marcada como actual
+        detenerMusica();           // menú
+        detenerMusicaSeleccion();  // selección
+        detenerMusicaBatalla();    // batalla
+        detenerMusicaCondicion();  // victoria/derrota/empate
+    }
+
+
     private void cargarMusicaBatalla() {
         musicaBatalla1 = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/campos/MUSICABATALLA1.mp3"));
         musicaBatalla2 = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/campos/MUSICABATALLA2.mp3"));
