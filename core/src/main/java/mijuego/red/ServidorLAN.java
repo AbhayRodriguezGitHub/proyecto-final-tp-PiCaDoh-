@@ -15,28 +15,26 @@ import java.util.Queue;
 import java.util.concurrent.*;
 
 /**
- * Servidor TCP sincronizado para partidas 1v1.
- * Controla las conexiones, emparejamiento y sincroniza invocaciones, efectos y vidas.
+ * Servidor TCP sincronizado para partidas 1v1 con descubrimiento UDP en LAN.
  *
- * Protocolo:
+ * Protocolo TCP:
  *  - JOIN_QUEUE / TROOP_READY / EFFECT_READY / INVOKE / INVOKE_EFFECT / PLAY
  *  - REVEAL replica invocaciones y vidas
  *
- * ✅ Preparado para LAN (varias PCs):
- *  - Muestra todas las IPs locales del servidor
- *  - UTF-8 en IO, TCP_NODELAY y keepAlive en sockets
- *  - Puerto configurable (-Dserver.port / SERVER_PORT)
+ * Extras LAN:
+ *  - Muestra IPs locales disponibles
+ *  - Responde discovery UDP para autoconexión de clientes
+ *  - UTF-8, TCP_NODELAY, keepAlive
+ *  - Puertos configurables (-Dserver.port / SERVER_PORT)
  */
 public class ServidorLAN {
 
-    // ======== Config ========
+    // ========= Configuración =========
     private static int resolvePort(int defaultPort) {
-        // Propiedad del sistema: -Dserver.port=5000
         String p = System.getProperty("server.port");
         if (p != null && !p.isBlank()) {
             try { return Integer.parseInt(p.trim()); } catch (NumberFormatException ignored) {}
         }
-        // Variable de entorno: SERVER_PORT=5000
         p = System.getenv("SERVER_PORT");
         if (p != null && !p.isBlank()) {
             try { return Integer.parseInt(p.trim()); } catch (NumberFormatException ignored) {}
@@ -44,7 +42,12 @@ public class ServidorLAN {
         return defaultPort;
     }
 
-    private static final int DEFAULT_PORT = 5000;
+    private static final int DEFAULT_TCP_PORT = 5000;
+
+    // Descubrimiento UDP (debe coincidir con el cliente)
+    private static final int DISCOVERY_PORT = 5001;
+    private static final String DISCOVER_MAGIC = "PICADOH_DISCOVER";
+    private static final String DISCOVER_REPLY = "DISCOVER_REPLY";
 
     private final ServerSocket server;
     private final ExecutorService pool = Executors.newCachedThreadPool(r -> {
@@ -53,6 +56,7 @@ public class ServidorLAN {
         return t;
     });
     private final Gson gson = new Gson();
+    private volatile boolean running = true;
 
     private final Queue<ClientHandler> waiting = new ConcurrentLinkedQueue<>();
     private final Map<ClientHandler, Match> matches = new ConcurrentHashMap<>();
@@ -65,7 +69,6 @@ public class ServidorLAN {
         int vidaB = 80;
         boolean partidaIniciada = false;
 
-        // vidas reportadas este turno
         Integer vidaA_prop = null;
         Integer vidaA_enemy = null;
         Integer vidaB_prop = null;
@@ -89,9 +92,82 @@ public class ServidorLAN {
         ss.bind(new InetSocketAddress("0.0.0.0", port), 100);
         this.server = ss;
 
-        System.out.println("[ServidorLAN] Servidor iniciado en puerto " + port);
+        System.out.println("[ServidorLAN] Servidor TCP escuchando en puerto " + port);
         listarIPsLocales(port);
         mostrarVentanaServidor();
+
+        // Iniciar responder de descubrimiento UDP
+        pool.submit(this::runDiscoveryResponder);
+    }
+
+    /** Responder UDP para autodescubrimiento de clientes en la LAN */
+    private void runDiscoveryResponder() {
+        System.out.println("[Discovery] Responder UDP en puerto " + DISCOVERY_PORT);
+        DatagramSocket ds = null;
+        try {
+            ds = new DatagramSocket(null);
+            ds.setReuseAddress(true);
+            ds.bind(new InetSocketAddress(DISCOVERY_PORT));
+            byte[] buf = new byte[512];
+
+            while (running) {
+                DatagramPacket pkt = new DatagramPacket(buf, buf.length);
+                ds.receive(pkt);
+
+                String msg = new String(pkt.getData(), pkt.getOffset(), pkt.getLength(), StandardCharsets.UTF_8).trim();
+                if (!DISCOVER_MAGIC.equals(msg)) continue;
+
+                // Determinar nuestra IP correcta para responder a ese cliente
+                InetAddress requester = pkt.getAddress();
+                InetAddress localIP = pickLocalAddressFor(requester);
+                if (localIP == null) localIP = InetAddress.getByName(getFirstIPv4());
+
+                JsonObject reply = new JsonObject();
+                reply.addProperty("type", DISCOVER_REPLY);
+                reply.addProperty("host", localIP.getHostAddress());
+                reply.addProperty("port", server.getLocalPort());
+
+                byte[] out = reply.toString().getBytes(StandardCharsets.UTF_8);
+                DatagramPacket resp = new DatagramPacket(out, out.length, requester, pkt.getPort());
+                ds.send(resp);
+
+                System.out.printf("[Discovery] Respondí a %s -> host=%s port=%d%n",
+                    requester.getHostAddress(), localIP.getHostAddress(), server.getLocalPort());
+            }
+        } catch (SocketException se) {
+            System.out.println("[Discovery] Socket UDP cerrado: " + se.getMessage());
+        } catch (IOException ioe) {
+            if (running) System.out.println("[Discovery] Error: " + ioe.getMessage());
+        } finally {
+            if (ds != null) ds.close();
+        }
+    }
+
+    /** Elige la IP local adecuada para hablar con una IP remota (evita 127.0.0.1) */
+    private InetAddress pickLocalAddressFor(InetAddress remote) {
+        try (DatagramSocket probe = new DatagramSocket()) {
+            probe.connect(remote, 9); // puerto dummy
+            return probe.getLocalAddress();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /** Primer IPv4 no-loopback disponible (fallback) */
+    private String getFirstIPv4() {
+        try {
+            Enumeration<NetworkInterface> nics = NetworkInterface.getNetworkInterfaces();
+            while (nics.hasMoreElements()) {
+                NetworkInterface nic = nics.nextElement();
+                if (!nic.isUp() || nic.isLoopback() || nic.isVirtual()) continue;
+                Enumeration<InetAddress> addrs = nic.getInetAddresses();
+                while (addrs.hasMoreElements()) {
+                    InetAddress a = addrs.nextElement();
+                    if (a instanceof Inet4Address && !a.isLoopbackAddress()) return a.getHostAddress();
+                }
+            }
+        } catch (Exception ignored) {}
+        return "127.0.0.1";
     }
 
     /** Imprime las IPs locales útiles para que los clientes se conecten */
@@ -149,11 +225,11 @@ public class ServidorLAN {
         try {
             while (!server.isClosed()) {
                 Socket s = server.accept();
-                // Ajustes útiles para LAN
                 try {
                     s.setTcpNoDelay(true);
                     s.setKeepAlive(true);
                 } catch (SocketException ignored) {}
+
                 ClientHandler ch = new ClientHandler(s);
                 pool.submit(ch);
             }
@@ -165,6 +241,7 @@ public class ServidorLAN {
     }
 
     private void shutdown() {
+        running = false;
         try { server.close(); } catch (IOException ignored) {}
         pool.shutdownNow();
         System.out.println("[ServidorLAN] Cerrado.");
@@ -206,31 +283,25 @@ public class ServidorLAN {
                         case "JOIN_QUEUE":
                             enqueueAndMatch(this);
                             break;
-
-
                         case "TROOP_READY":
                             this.tropas = jsonArrayToList(obj.getAsJsonArray("tropas"));
                             tryStartIfReady();
                             break;
-
                         case "EFFECT_READY":
                             this.efectos = jsonArrayToList(obj.getAsJsonArray("efectos"));
                             tryStartIfReady();
                             break;
-
                         case "INVOKE":
                             JsonObject inv = new JsonObject();
                             if (obj.has("slot")) inv.add("slot", obj.get("slot"));
                             if (obj.has("class")) inv.add("class", obj.get("class"));
                             pendingInvokes.add(inv);
                             break;
-
                         case "INVOKE_EFFECT":
                             JsonObject eff = new JsonObject();
                             if (obj.has("class")) eff.add("class", obj.get("class"));
                             pendingEffectInvokes.add(eff);
                             break;
-
                         case "PLAY": {
                             this.playedThisTurn = true;
                             if (match != null) {
@@ -239,19 +310,13 @@ public class ServidorLAN {
                                 boolean soyA = (match.a == this);
 
                                 if (vidaP >= 0 && vidaE >= 0) {
-                                    if (soyA) {
-                                        match.vidaA_prop = vidaP;
-                                        match.vidaA_enemy = vidaE;
-                                    } else {
-                                        match.vidaB_prop = vidaP;
-                                        match.vidaB_enemy = vidaE;
-                                    }
+                                    if (soyA) { match.vidaA_prop = vidaP; match.vidaA_enemy = vidaE; }
+                                    else      { match.vidaB_prop = vidaP; match.vidaB_enemy = vidaE; }
                                 }
                                 checkAndSendReveal(match);
                             }
                             break;
                         }
-
                         default:
                             System.out.println("[ServidorLAN] Mensaje desconocido: " + type);
                     }
@@ -342,7 +407,6 @@ public class ServidorLAN {
             m.vidaB = m.vidaB_prop;
         }
 
-        // Construir mensajes REVEAL
         JsonObject revealA = buildReveal(A, B, m.vidaA, m.vidaB);
         JsonObject revealB = buildReveal(B, A, m.vidaB, m.vidaA);
 
@@ -351,7 +415,6 @@ public class ServidorLAN {
 
         System.out.println("[ServidorLAN] REVEAL enviado. Vidas => A:" + m.vidaA + " / B:" + m.vidaB);
 
-        // Reset de estado del turno
         A.pendingInvokes = new JsonArray();
         A.pendingEffectInvokes = new JsonArray();
         A.playedThisTurn = false;
@@ -393,7 +456,7 @@ public class ServidorLAN {
 
     // =================== MAIN ===================
     public static void main(String[] args) throws Exception {
-        int port = resolvePort(DEFAULT_PORT);
+        int port = resolvePort(DEFAULT_TCP_PORT);
         ServidorLAN s = new ServidorLAN(port);
         s.start();
     }
