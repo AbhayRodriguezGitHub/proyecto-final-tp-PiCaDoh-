@@ -1247,6 +1247,23 @@ public class PantallaBatalla implements Screen {
 
             if ("OPPONENT_DISCONNECTED".equals(type)) {
                 System.out.println("[CLIENTE-LAN] Rival desconectado.");
+                Gdx.app.postRunnable(() -> {
+                    if (partidaTerminada) return; // evitar doble transición
+
+                    // Marcar fin de partida y limpiar estados de espera
+                    partidaTerminada = true;
+                    esperandoReveal = false;
+                    batallaEnCurso = false;
+                    playEnviadoEsteTurno = false;
+
+                    // Cortar cualquier música previa y reproducir victoria
+                    try { juego.detenerTodasLasMusicas(); } catch (Throwable ignored) {}
+                    try { juego.reproducirMusicaVictoria(); } catch (Throwable ignored) {}
+
+                    // Ir a PantallaVictoria
+                    juego.setScreen(new PantallaVictoria(juego));
+                });
+                return;
             }
         });
 
