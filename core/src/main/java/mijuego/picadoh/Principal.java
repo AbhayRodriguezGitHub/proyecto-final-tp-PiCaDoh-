@@ -6,19 +6,13 @@ import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.graphics.Cursor;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
-import com.badlogic.gdx.graphics.g2d.BitmapFont;
-import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.math.MathUtils;
-import com.badlogic.gdx.scenes.scene2d.Stage;
-import com.badlogic.gdx.scenes.scene2d.ui.Label;
-import com.badlogic.gdx.scenes.scene2d.ui.Skin;
-import com.badlogic.gdx.utils.viewport.ScreenViewport;
 import mijuego.picadoh.cartas.RegistroCartas;
 
 /**
  * Clase principal del juego.
  * - Inicializa recursos globales.
- * - Crea e intenta conectar el cliente LAN por defecto (127.0.0.1:5000).
+ * - Conecta el cliente LAN con descubrimiento automático (host null).
  *
  * Nota: clienteLAN NO es final para que otras pantallas (ej. PantallaMenu) puedan
  * reasignarlo o recrearlo si lo necesitan.
@@ -26,11 +20,8 @@ import mijuego.picadoh.cartas.RegistroCartas;
 public class Principal extends Game {
     public SpriteBatch batch;
 
-    // clienteLAN por defecto apuntando a local; podés reasignarlo desde pantallas si querés.
+    // clienteLAN con autodescubrimiento en la LAN (host = null).
     public mijuego.red.ClienteLAN clienteLAN;
-
-    private Stage coordenadasStage;
-    private Label coordenadasLabel;
 
     private boolean cursorPersonalizadoUsado = true;
 
@@ -41,7 +32,7 @@ public class Principal extends Game {
     private Music musicaBatalla2;
     private Music musicaVictoria; // Nueva
     private Music musicaDerrota;  // Nueva
-    private Music musicaEmpate;   // NUEVA: música de empate
+    private Music musicaEmpate;   // Nueva
     private Music musicaActual;
 
     //  Volumen global
@@ -54,7 +45,6 @@ public class Principal extends Game {
         batch = new SpriteBatch();
 
         aplicarCursor();
-        setupVisorDeCoordenadas();
         cargarMusica();
         cargarMusicaSeleccion();
         cargarMusicaBatalla();
@@ -62,16 +52,15 @@ public class Principal extends Game {
         reproducirMusica(); // Menú por defecto
 
         // ----- Conexión LAN -----
-        // Instanciamos el cliente aquí (no final para permitir reasignar si alguna pantalla lo requiere)
-        this.clienteLAN = new mijuego.red.ClienteLAN("127.0.0.1", 5000);
+        // Autodescubrimiento: host = null, port = 0 (usa default)
+        this.clienteLAN = new mijuego.red.ClienteLAN(this, null, 0);
 
         try {
             boolean ok = clienteLAN.connect();
             if (ok) {
-                System.out.println("[LAN] Cliente conectado a 127.0.0.1:5000");
-                // Listener global: imprimir todo lo que llegue (útil para debug)
+                System.out.println("[LAN] Cliente conectado (autodescubrimiento activo).");
+                // Listener global: imprimir todo lo que llegue (útil para debug / logs)
                 clienteLAN.setOnMessage(json -> {
-                    // Este se ejecuta en el hilo del reader; imprimir está bien.
                     System.out.println("[LAN-RECV] " + json.toString());
                 });
             } else {
@@ -177,7 +166,6 @@ public class Principal extends Game {
         musicaDerrota.setLooping(true);
         musicaDerrota.setVolume(volumenMusica);
 
-        // NUEVO: música de EMPATE
         musicaEmpate = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/condicion/EMPATE.mp3"));
         musicaEmpate.setLooping(true);
         musicaEmpate.setVolume(volumenMusica);
@@ -280,42 +268,9 @@ public class Principal extends Game {
         return power;
     }
 
-    // ───────────────────────────────
-    // Visor de coordenadas
-    // ───────────────────────────────
-    private void setupVisorDeCoordenadas() {
-        coordenadasStage = new Stage(new ScreenViewport());
-        Skin skin = new Skin();
-        BitmapFont font = new BitmapFont();
-        Label.LabelStyle labelStyle = new Label.LabelStyle(font, Color.WHITE);
-        skin.add("default", labelStyle);
-        coordenadasLabel = new Label("X: 0 | Y: 0", skin);
-        coordenadasLabel.setPosition(10, Gdx.graphics.getHeight() - 20);
-        coordenadasStage.addActor(coordenadasLabel);
-    }
-
-    @Override
-    public void render() {
-        super.render();
-        int mouseX = Gdx.input.getX();
-        int mouseY = Gdx.graphics.getHeight() - Gdx.input.getY();
-        coordenadasLabel.setText("X: " + mouseX + " | Y: " + mouseY);
-        coordenadasStage.act();
-        coordenadasStage.draw();
-    }
-
-    @Override
-    public void resize(int width, int height) {
-        super.resize(width, height);
-        if (coordenadasStage != null) {
-            coordenadasStage.getViewport().update(width, height, true);
-        }
-    }
-
     @Override
     public void dispose() {
         batch.dispose();
-        if (coordenadasStage != null) coordenadasStage.dispose();
         if (musicaMenu != null) musicaMenu.dispose();
         if (musicaSeleccion != null) musicaSeleccion.dispose();
         if (musicaBatalla1 != null) musicaBatalla1.dispose();
