@@ -15,17 +15,19 @@ import java.util.Queue;
 import java.util.concurrent.*;
 
 /**
- * Servidor TCP sincronizado para partidas 1v1 con descubrimiento UDP en LAN.
+ * Servidor TCP sincronizado para partidas 1v1 con descubrimiento en LAN.
  *
  * Protocolo TCP:
  *  - JOIN_QUEUE / TROOP_READY / EFFECT_READY / INVOKE / INVOKE_EFFECT / PLAY
  *  - REVEAL replica invocaciones y vidas
  *
- * Extras LAN:
+ * Extras LAN (modo colegio):
  *  - Muestra IPs locales disponibles
- *  - Responde discovery UDP para autoconexión de clientes
+ *  - Responde discovery UDP (broadcast y unicast) y multicast opcional
+ *  - Crea server_ip.txt con la IP a la que deben conectarse los clientes
+ *  - Best-effort: crea reglas de firewall en Windows para TCP:5000 y UDP:5001/5002
  *  - UTF-8, TCP_NODELAY, keepAlive
- *  - Puertos configurables (-Dserver.port / SERVER_PORT)
+ *  - Puertos e interfaz configurables (-Dserver.port / -Dserver.bind) o env SERVER_PORT / SERVER_BIND
  */
 public class ServidorLAN {
 
@@ -42,12 +44,24 @@ public class ServidorLAN {
         return defaultPort;
     }
 
+    private static String resolveBind(String defaultBind) {
+        String b = System.getProperty("server.bind");
+        if (b != null && !b.isBlank()) return b.trim();
+        b = System.getenv("SERVER_BIND");
+        if (b != null && !b.isBlank()) return b.trim();
+        return defaultBind;
+    }
+
     private static final int DEFAULT_TCP_PORT = 5000;
 
-    // Descubrimiento UDP (debe coincidir con el cliente)
-    private static final int DISCOVERY_PORT = 5001;
-    private static final String DISCOVER_MAGIC = "PICADOH_DISCOVER";
-    private static final String DISCOVER_REPLY = "DISCOVER_REPLY";
+    // Descubrimiento (debe coincidir con el cliente)
+    private static final int    DISCOVERY_PORT  = 5001;
+    private static final String DISCOVER_MAGIC  = "PICADOH_DISCOVER";
+    private static final String DISCOVER_REPLY  = "DISCOVER_REPLY";
+
+    // Multicast opcional (algunas WiFi bloquean broadcast pero permiten multicast)
+    private static final String MC_ADDR = "239.255.255.250";
+    private static final int    MC_PORT = 5002;
 
     private final ServerSocket server;
     private final ExecutorService pool = Executors.newCachedThreadPool(r -> {
@@ -85,24 +99,96 @@ public class ServidorLAN {
     }
 
     // =================== CONSTRUCTOR ===================
-    public ServidorLAN(int port) throws IOException {
-        // Bind explícito a todas las interfaces (0.0.0.0)
+    public ServidorLAN(int port, String bindAddr) throws IOException {
+        // Si no especifican bind, detecto la primera IPv4 útil para fijarla
+        if (bindAddr == null || bindAddr.isBlank() || "0.0.0.0".equals(bindAddr)) {
+            String detected = getFirstIPv4();
+            if (!"127.0.0.1".equals(detected)) {
+                bindAddr = detected; // mejora UX en redes escolares
+            } else {
+                bindAddr = "0.0.0.0";
+            }
+        }
+
+        // Bind explícito a la interfaz indicada (0.0.0.0 = todas)
         ServerSocket ss = new ServerSocket();
         ss.setReuseAddress(true);
-        ss.bind(new InetSocketAddress("0.0.0.0", port), 100);
+        ss.bind(new InetSocketAddress(bindAddr, port), 100);
         this.server = ss;
 
-        System.out.println("[ServidorLAN] Servidor TCP escuchando en puerto " + port);
+        System.out.println("[ServidorLAN] Servidor TCP escuchando en " + bindAddr + ":" + port);
         listarIPsLocales(port);
+        escribirServerIpFile(bindAddr, port);       // <-- crea server_ip.txt
+        ensureWindowsFirewall(bindAddr, port);      // <-- intenta abrir firewall si es Windows
         mostrarVentanaServidor();
 
-        // Iniciar responder de descubrimiento UDP
-        pool.submit(this::runDiscoveryResponder);
+        // Threads de discovery
+        pool.submit(this::runDiscoveryResponderUDP);
+        pool.submit(this::runDiscoveryResponderMulticast);
     }
 
-    /** Responder UDP para autodescubrimiento de clientes en la LAN */
-    private void runDiscoveryResponder() {
-        System.out.println("[Discovery] Responder UDP en puerto " + DISCOVERY_PORT);
+    /** Crea/actualiza server_ip.txt con la IP que deben usar los clientes. */
+    private void escribirServerIpFile(String bindAddr, int port) {
+        // Si el bind fue 0.0.0.0, intento grabar la primera IPv4 util
+        String ipToWrite = bindAddr;
+        if ("0.0.0.0".equals(bindAddr)) {
+            ipToWrite = getFirstIPv4();
+        }
+        File f = new File("server_ip.txt");
+        try (FileWriter fw = new FileWriter(f)) {
+            fw.write(ipToWrite);
+            System.out.println("[ServidorLAN] server_ip.txt generado con: " + ipToWrite);
+        } catch (IOException e) {
+            System.out.println("[ServidorLAN] No pude escribir server_ip.txt: " + e.getMessage());
+        }
+    }
+
+    /** Best-effort para crear reglas de firewall en Windows. No detiene el server si falla. */
+    private void ensureWindowsFirewall(String bindAddr, int port) {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (!os.contains("win")) {
+            System.out.println("[Firewall] Sistema no Windows. Saltando configuración de firewall.");
+            return;
+        }
+        try {
+            // Regla TCP (puerto del servidor)
+            runNetsh(new String[]{
+                "netsh","advfirewall","firewall","add","rule",
+                "name=Picadoh-TCP-"+port,"dir=in","action=allow","protocol=TCP","localport="+port
+            });
+
+            // Regla UDP discovery
+            runNetsh(new String[]{
+                "netsh","advfirewall","firewall","add","rule",
+                "name=Picadoh-UDP-"+DISCOVERY_PORT,"dir=in","action=allow","protocol=UDP","localport="+DISCOVERY_PORT
+            });
+
+            // Regla UDP multicast (5002)
+            runNetsh(new String[]{
+                "netsh","advfirewall","firewall","add","rule",
+                "name=Picadoh-UDP-"+MC_PORT,"dir=in","action=allow","protocol=UDP","localport="+MC_PORT
+            });
+
+            System.out.println("[Firewall] Reglas solicitadas a Windows. Si no sos admin, puede que no surtan efecto.");
+        } catch (Exception e) {
+            System.out.println("[Firewall] No pude crear reglas (ok): " + e.getMessage());
+        }
+    }
+
+    private void runNetsh(String[] cmd) throws IOException, InterruptedException {
+        Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                // Log mínimo
+            }
+        }
+        p.waitFor();
+    }
+
+    /** Responder discovery por UDP (broadcast y unicast directo al server) */
+    private void runDiscoveryResponderUDP() {
+        System.out.println("[Discovery/UDP] Responder en puerto " + DISCOVERY_PORT);
         DatagramSocket ds = null;
         try {
             ds = new DatagramSocket(null);
@@ -117,7 +203,6 @@ public class ServidorLAN {
                 String msg = new String(pkt.getData(), pkt.getOffset(), pkt.getLength(), StandardCharsets.UTF_8).trim();
                 if (!DISCOVER_MAGIC.equals(msg)) continue;
 
-                // Determinar nuestra IP correcta para responder a ese cliente
                 InetAddress requester = pkt.getAddress();
                 InetAddress localIP = pickLocalAddressFor(requester);
                 if (localIP == null) localIP = InetAddress.getByName(getFirstIPv4());
@@ -131,15 +216,60 @@ public class ServidorLAN {
                 DatagramPacket resp = new DatagramPacket(out, out.length, requester, pkt.getPort());
                 ds.send(resp);
 
-                System.out.printf("[Discovery] Respondí a %s -> host=%s port=%d%n",
+                System.out.printf("[Discovery/UDP] → %s  host=%s port=%d%n",
                     requester.getHostAddress(), localIP.getHostAddress(), server.getLocalPort());
             }
         } catch (SocketException se) {
-            System.out.println("[Discovery] Socket UDP cerrado: " + se.getMessage());
+            System.out.println("[Discovery/UDP] Socket cerrado: " + se.getMessage());
         } catch (IOException ioe) {
-            if (running) System.out.println("[Discovery] Error: " + ioe.getMessage());
+            if (running) System.out.println("[Discovery/UDP] Error: " + ioe.getMessage());
         } finally {
             if (ds != null) ds.close();
+        }
+    }
+
+    /** Responder discovery por Multicast (opcional) */
+    private void runDiscoveryResponderMulticast() {
+        System.out.println("[Discovery/MC] Intentando unir a " + MC_ADDR + ":" + MC_PORT + " (opcional)...");
+        MulticastSocket ms = null;
+        try {
+            ms = new MulticastSocket(MC_PORT);
+            ms.setReuseAddress(true);
+            InetAddress grp = InetAddress.getByName(MC_ADDR);
+            ms.joinGroup(grp);
+
+            byte[] buf = new byte[512];
+            while (running) {
+                DatagramPacket pkt = new DatagramPacket(buf, buf.length);
+                ms.receive(pkt);
+
+                String msg = new String(pkt.getData(), pkt.getOffset(), pkt.getLength(), StandardCharsets.UTF_8).trim();
+                if (!DISCOVER_MAGIC.equals(msg)) continue;
+
+                InetAddress requester = pkt.getAddress();
+                InetAddress localIP = pickLocalAddressFor(requester);
+                if (localIP == null) localIP = InetAddress.getByName(getFirstIPv4());
+
+                JsonObject reply = new JsonObject();
+                reply.addProperty("type", DISCOVER_REPLY);
+                reply.addProperty("host", localIP.getHostAddress());
+                reply.addProperty("port", server.getLocalPort());
+
+                byte[] out = reply.toString().getBytes(StandardCharsets.UTF_8);
+                DatagramPacket resp = new DatagramPacket(out, out.length, requester, pkt.getPort());
+                ms.send(resp);
+
+                System.out.printf("[Discovery/MC] → %s  host=%s port=%d%n",
+                    requester.getHostAddress(), localIP.getHostAddress(), server.getLocalPort());
+            }
+        } catch (IOException ioe) {
+            // Multicast puede no estar habilitado; lo dejamos informativo
+            System.out.println("[Discovery/MC] No disponible (" + ioe.getMessage() + "). Continuamos sin multicast.");
+        } finally {
+            if (ms != null) {
+                try { ms.leaveGroup(InetAddress.getByName(MC_ADDR)); } catch (Exception ignored) {}
+                ms.close();
+            }
         }
     }
 
@@ -147,7 +277,11 @@ public class ServidorLAN {
     private InetAddress pickLocalAddressFor(InetAddress remote) {
         try (DatagramSocket probe = new DatagramSocket()) {
             probe.connect(remote, 9); // puerto dummy
-            return probe.getLocalAddress();
+            InetAddress la = probe.getLocalAddress();
+            if (la instanceof Inet4Address && !la.isLoopbackAddress()) return la;
+            // fallback: primera IPv4 util
+            String first = getFirstIPv4();
+            return InetAddress.getByName(first);
         } catch (Exception ignored) {
             return null;
         }
@@ -230,11 +364,12 @@ public class ServidorLAN {
                     s.setKeepAlive(true);
                 } catch (SocketException ignored) {}
 
+                System.out.println("[ServidorLAN] Cliente entrante: " + s.getRemoteSocketAddress());
                 ClientHandler ch = new ClientHandler(s);
                 pool.submit(ch);
             }
         } catch (IOException e) {
-            System.err.println("[ServidorLAN] Error accept: " + e.getMessage());
+            if (running) System.err.println("[ServidorLAN] Error accept: " + e.getMessage());
         } finally {
             shutdown();
         }
@@ -398,7 +533,7 @@ public class ServidorLAN {
         ClientHandler B = m.b;
         if (!A.playedThisTurn || !B.playedThisTurn) return;
 
-        // Usar valores del cliente A como referencia global
+        // Usar valores del cliente A como referencia global (o del B si A no reportó)
         if (m.vidaA_prop != null && m.vidaA_enemy != null) {
             m.vidaA = m.vidaA_prop;
             m.vidaB = m.vidaA_enemy;
@@ -457,7 +592,8 @@ public class ServidorLAN {
     // =================== MAIN ===================
     public static void main(String[] args) throws Exception {
         int port = resolvePort(DEFAULT_TCP_PORT);
-        ServidorLAN s = new ServidorLAN(port);
+        String bind = resolveBind("0.0.0.0");
+        ServidorLAN s = new ServidorLAN(port, bind);
         s.start();
     }
 }

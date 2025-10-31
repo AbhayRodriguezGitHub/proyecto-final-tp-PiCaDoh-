@@ -3,11 +3,14 @@ package mijuego.picadoh;
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Music;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Cursor;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.MathUtils;
 import mijuego.picadoh.cartas.RegistroCartas;
+
+import java.io.File;
 
 /**
  * Clase principal del juego.
@@ -44,7 +47,14 @@ public class Principal extends Game {
     public void create() {
         batch = new SpriteBatch();
 
-        aplicarCursor();
+        // Cursor robusto (no debe crashear aunque falte el PNG)
+        try {
+            aplicarCursor();
+        } catch (Throwable t) {
+            System.err.println("[CURSOR] Error aplicando cursor (fallback a sistema): " + t.getMessage());
+            try { Gdx.graphics.setSystemCursor(Cursor.SystemCursor.Arrow); } catch (Throwable ignored) {}
+        }
+
         cargarMusica();
         cargarMusicaSeleccion();
         cargarMusicaBatalla();
@@ -52,17 +62,12 @@ public class Principal extends Game {
         reproducirMusica(); // Menú por defecto
 
         // ----- Conexión LAN -----
-        // Autodescubrimiento: host = null, port = 0 (usa default)
         this.clienteLAN = new mijuego.red.ClienteLAN(this, null, 0);
-
         try {
             boolean ok = clienteLAN.connect();
             if (ok) {
                 System.out.println("[LAN] Cliente conectado (autodescubrimiento activo).");
-                // Listener global: imprimir todo lo que llegue (útil para debug / logs)
-                clienteLAN.setOnMessage(json -> {
-                    System.out.println("[LAN-RECV] " + json.toString());
-                });
+                clienteLAN.setOnMessage(json -> System.out.println("[LAN-RECV] " + json));
             } else {
                 System.out.println("[LAN] No se pudo conectar al servidor (clienteLAN.connect() devolvió false).");
             }
@@ -134,8 +139,8 @@ public class Principal extends Game {
     }
 
     // ───────────────────────────────
-// Control total de músicas
-// ───────────────────────────────
+    // Control total de músicas
+    // ───────────────────────────────
 
     /** Detiene las músicas de batalla (ambas pistas). */
     public void detenerMusicaBatalla() {
@@ -159,7 +164,6 @@ public class Principal extends Game {
         detenerMusicaCondicion();  // victoria/derrota/empate
     }
 
-
     private void cargarMusicaBatalla() {
         musicaBatalla1 = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/campos/MUSICABATALLA1.mp3"));
         musicaBatalla2 = Gdx.audio.newMusic(Gdx.files.internal("lwjgl3/assets/campos/MUSICABATALLA2.mp3"));
@@ -179,9 +183,7 @@ public class Principal extends Game {
             musicaActual = m2;
             m2.play();
         });
-        m2.setOnCompletionListener(music -> {
-            reproducirMusicaEnBucleAlternado(m1, m2);
-        });
+        m2.setOnCompletionListener(music -> reproducirMusicaEnBucleAlternado(m1, m2));
     }
 
     private void cargarMusicaCondicion() {
@@ -250,33 +252,128 @@ public class Principal extends Game {
     }
 
     // ───────────────────────────────
-    // Cursor personalizado
+    // Cursor personalizado (robusto, sin crash)
     // ───────────────────────────────
     public void aplicarCursor() {
-        if (cursorPersonalizadoUsado) {
+        if (!cursorPersonalizadoUsado) {
+            try {
+                Gdx.graphics.setSystemCursor(Cursor.SystemCursor.Arrow);
+            } catch (Throwable ignored) {}
+            return;
+        }
+        try {
             setCursorPersonalizado();
-        } else {
-            Gdx.graphics.setSystemCursor(Cursor.SystemCursor.Arrow);
+        } catch (Throwable t) {
+            System.err.println("[CURSOR] setCursorPersonalizado falló: " + t.getMessage());
+            try {
+                Gdx.graphics.setSystemCursor(Cursor.SystemCursor.Arrow);
+            } catch (Throwable ignored) {}
         }
     }
 
+    /**
+     * Intenta cargar "lwjgl3/assets/ui/CURSOR.png" desde varias ubicaciones
+     * (absolute → local → internal) y crea un cursor escalado con límites.
+     * Si falla, NO crashea: deja el cursor del sistema.
+     */
     public void setCursorPersonalizado() {
-        Pixmap original = new Pixmap(Gdx.files.absolute("lwjgl3/assets/ui/CURSOR.png"));
-        int screenWidth = Gdx.graphics.getWidth();
-        int screenHeight = Gdx.graphics.getHeight();
-        float refWidth = 1920f;
-        float refHeight = 1080f;
-        float scale = (screenWidth / refWidth + screenHeight / refHeight) / 2f;
-        int newWidth = nextPowerOfTwo((int)(original.getWidth() * scale));
-        int newHeight = nextPowerOfTwo((int)(original.getHeight() * scale));
-        Pixmap scaled = new Pixmap(newWidth, newHeight, Pixmap.Format.RGBA8888);
-        scaled.drawPixmap(original, 0, 0, original.getWidth(), original.getHeight(), 0, 0, newWidth, newHeight);
-        int xHotspot = newWidth / 2;
-        int yHotspot = newHeight / 6;
-        Cursor cursor = Gdx.graphics.newCursor(scaled, xHotspot, yHotspot);
-        Gdx.graphics.setCursor(cursor);
-        original.dispose();
-        scaled.dispose();
+        final String rel = "lwjgl3/assets/ui/CURSOR.png";
+        FileHandle fh = findAssetMulti(rel);
+
+        if (fh == null || !fh.exists()) {
+            System.err.println("[CURSOR] No se encontró el PNG en ninguna ubicación conocida: " + rel);
+            try { Gdx.graphics.setSystemCursor(Cursor.SystemCursor.Arrow); } catch (Throwable ignored) {}
+            return;
+        }
+
+        Pixmap original = null;
+        Pixmap scaled = null;
+        try {
+            original = new Pixmap(fh);
+
+            // Calcular escala (segura) desde 1920x1080
+            int screenWidth = Math.max(1, Gdx.graphics.getWidth());
+            int screenHeight = Math.max(1, Gdx.graphics.getHeight());
+            float refWidth = 1920f;
+            float refHeight = 1080f;
+            float scale = (screenWidth / refWidth + screenHeight / refHeight) / 2f;
+            if (scale <= 0f) scale = 1f;
+
+            int newWidth = Math.max(1, Math.round(original.getWidth() * scale));
+            int newHeight = Math.max(1, Math.round(original.getHeight() * scale));
+
+            // Límite típico para cursores (muchas plataformas 32/64/128/256). Usamos 256.
+            int MAX_CURSOR = 256;
+            newWidth = Math.min(newWidth, MAX_CURSOR);
+            newHeight = Math.min(newHeight, MAX_CURSOR);
+
+            // Ajustar a potencia de 2 (algunas impls lo prefieren)
+            newWidth = nextPowerOfTwo(newWidth);
+            newHeight = nextPowerOfTwo(newHeight);
+            newWidth = Math.min(newWidth, MAX_CURSOR);
+            newHeight = Math.min(newHeight, MAX_CURSOR);
+
+            scaled = new Pixmap(newWidth, newHeight, Pixmap.Format.RGBA8888);
+            scaled.drawPixmap(original, 0, 0, original.getWidth(), original.getHeight(), 0, 0, newWidth, newHeight);
+
+            int xHotspot = newWidth / 2;
+            int yHotspot = newHeight / 6;
+
+            Cursor cursor = Gdx.graphics.newCursor(scaled, xHotspot, yHotspot);
+            Gdx.graphics.setCursor(cursor);
+
+            System.out.println("[CURSOR] Cursor aplicado desde: " + fh.path() +
+                " (" + original.getWidth() + "x" + original.getHeight() +
+                " → " + newWidth + "x" + newHeight + ")");
+        } catch (Throwable t) {
+            System.err.println("[CURSOR] Falló la creación del cursor: " + t.getMessage());
+            try { Gdx.graphics.setSystemCursor(Cursor.SystemCursor.Arrow); } catch (Throwable ignored) {}
+        } finally {
+            if (original != null) original.dispose();
+            if (scaled != null) scaled.dispose();
+        }
+    }
+
+    /**
+     * Busca un asset probando varias opciones para tolerar diferencias de working directory:
+     * - absolute("lwjgl3/assets/..."), local(...), internal(...),
+     * - variantes con separador nativo y con user.dir delante.
+     */
+    private FileHandle findAssetMulti(String relativePath) {
+        // 1) absolute tal como lo usás
+        FileHandle fh = Gdx.files.absolute(relativePath);
+        if (fh.exists()) return fh;
+
+        // 2) local
+        fh = Gdx.files.local(relativePath);
+        if (fh.exists()) return fh;
+
+        // 3) internal (por si IDE empaqueta resources)
+        fh = Gdx.files.internal(relativePath);
+        if (fh.exists()) return fh;
+
+        // 4) con separador nativo
+        String nativeRel = relativePath.replace("/", File.separator).replace("\\", File.separator);
+        fh = Gdx.files.absolute(nativeRel);
+        if (fh.exists()) return fh;
+        fh = Gdx.files.local(nativeRel);
+        if (fh.exists()) return fh;
+        fh = Gdx.files.internal(nativeRel);
+        if (fh.exists()) return fh;
+
+        // 5) prefijar con user.dir (working dir)
+        String userDir = System.getProperty("user.dir", ".");
+        String withUserDir = userDir + File.separator + nativeRel;
+        fh = Gdx.files.absolute(withUserDir);
+        if (fh.exists()) return fh;
+
+        // 6) subir un nivel por si se ejecuta desde submódulo
+        String upOne = userDir + File.separator + ".." + File.separator + nativeRel;
+        fh = Gdx.files.absolute(upOne);
+        if (fh.exists()) return fh;
+
+        // no encontrado
+        return null;
     }
 
     public boolean isCursorPersonalizadoUsado() {

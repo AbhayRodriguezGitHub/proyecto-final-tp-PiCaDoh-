@@ -6,6 +6,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import mijuego.picadoh.Principal;
 
+import javax.swing.*;
+import java.awt.GraphicsEnvironment;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -17,20 +19,36 @@ import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 /**
- * Cliente TCP con descubrimiento automático del servidor en la LAN.
- * Flujo:
- *  1) Si hay host por parámetro/propiedad/archivo -> conectar directo.
- *  2) Discovery UDP (broadcast).
- *  3) Fallback: barrido TCP de la(s) subred(es) local(es) para hallar el puerto 5000 abierto.
- *  4) Si conecta, cachea IP en server_ip.txt para reconexión rápida.
+ * Cliente TCP con opción de IP directa (recomendada en redes restringidas),
+ * descubrimiento UDP (broadcast + multicast) y fallback de escaneo TCP.
+ *
+ * En redes tipo colegio (APs con bloqueo de broadcast/aislamiento de clientes):
+ *  - Usá setHost(...) o server_ip.txt para IP directa del servidor.
+ *  - Se reintenta la conexión directa varias veces con timeouts más altos.
+ *  - Si todo falla, solicita la IP por diálogo y la cachea automáticamente.
  */
 public class ClienteLAN {
 
+    // ====== Config ======
     private static final int DEFAULT_TCP_PORT = 5000;
-    private static final int DISCOVERY_PORT   = 5001; // Debe coincidir con el servidor
-    private static final String DISCOVER_MAGIC = "PICADOH_DISCOVER";
-    private static final String DISCOVER_REPLY = "DISCOVER_REPLY";
 
+    // Descubrimiento UDP broadcast
+    private static final int    DISCOVERY_PORT   = 5001; // Debe coincidir con el servidor
+    private static final String DISCOVER_MAGIC   = "PICADOH_DISCOVER";
+    private static final String DISCOVER_REPLY   = "DISCOVER_REPLY";
+
+    // Descubrimiento UDP multicast (algunas redes lo permiten aunque bloqueen broadcast)
+    private static final String MC_ADDR = "239.255.255.250";
+    private static final int    MC_PORT = 5002;
+
+    private static final int DIRECT_CONNECT_RETRIES = 3;    // reintentos a IP directa
+    private static final int DIRECT_CONNECT_TIMEOUT = 4000; // ms por intento
+    private static final int SCAN_CONNECT_TIMEOUT   = 400;  // ms por host al escanear
+    private static final int MAX_SCAN_HOSTS         = 4096; // límite de hosts a probar
+    private static final int DISCOVERY_TIMEOUT      = 1800; // ms por intento discovery
+    private static final int DISCOVERY_TRIES        = 3;
+
+    // ====== Estado ======
     private String host; // puede quedar null → discovery/barrido
     private int port;
 
@@ -77,12 +95,20 @@ public class ClienteLAN {
         return null;
     }
 
+    // ====== API para UI: setear IP manualmente (modo IP directa recomendado) ======
+    public void setHost(String host, int port) {
+        this.host = (host == null || host.isBlank()) ? null : host.trim();
+        if (port > 0) this.port = port;
+        if (this.host != null) cacheHost(this.host);
+        System.out.println("[ClienteLAN] Host configurado manualmente: " + this.host + ":" + this.port);
+    }
+
     // ====== Estado de conexión ======
     public boolean isConnected() {
         return running && socket != null && socket.isConnected() && !socket.isClosed();
     }
 
-    // ====== Conexión (auto discovery + fallback scan) ======
+    // ====== Conexión (IP directa → Discovery broadcast → Discovery multicast → Escaneo TCP → Prompt IP) ======
     public boolean connect() {
         try {
             if (isConnected()) {
@@ -90,39 +116,71 @@ public class ClienteLAN {
                 return true;
             }
 
-            // 1) Si tengo host, intentar directo
+            // 1) IP directa prioritaria (recomendado para redes escolares)
             if (host != null && !host.isBlank()) {
-                if (tryConnect(host, port, 2000)) {
-                    cacheHost(host);
-                    return true;
-                } else {
-                    System.err.println("[ClienteLAN] Falló conectar a host cacheado/especificado: " + host + ":" + port);
-                    host = null; // forzar discovery
+                for (int i = 0; i < DIRECT_CONNECT_RETRIES; i++) {
+                    if (tryConnect(host, port, DIRECT_CONNECT_TIMEOUT)) {
+                        cacheHost(host);
+                        return true;
+                    }
+                    System.err.println("[ClienteLAN] Reintento directo " + (i + 1) + " a " + host + ":" + port);
                 }
+                System.err.println("[ClienteLAN] No pude conectar directo a " + host + ":" + port + ". Revisá firewall/IP.");
             }
 
-            // 2) Discovery UDP
-            System.out.println("[ClienteLAN] Sin host válido. Buscando servidor por UDP broadcast...");
-            ServerHint hint = discoverServer(1800, 3);
+            // 2) Discovery UDP (broadcast)
+            System.out.println("[ClienteLAN] Intentando descubrimiento UDP (broadcast)...");
+            ServerHint hint = discoverServerBroadcast(DISCOVERY_TIMEOUT, DISCOVERY_TRIES);
             if (hint != null) {
                 host = hint.host;
                 port = hint.port > 0 ? hint.port : port;
-                if (tryConnect(host, port, 2000)) {
-                    cacheHost(host);
-                    return true;
-                } else {
-                    System.err.println("[ClienteLAN] El servidor respondió discovery pero el TCP falló: " + host + ":" + port);
+                for (int i = 0; i < DIRECT_CONNECT_RETRIES; i++) {
+                    if (tryConnect(host, port, DIRECT_CONNECT_TIMEOUT)) {
+                        cacheHost(host);
+                        return true;
+                    }
                 }
+                System.err.println("[ClienteLAN] El servidor respondió por broadcast pero el TCP falló: " + host + ":" + port);
             } else {
-                System.out.println("[ClienteLAN] Discovery UDP sin respuestas. Activando fallback: barrido TCP en la(s) subred(es)...");
+                System.out.println("[ClienteLAN] Broadcast sin respuestas.");
             }
 
-            // 3) Fallback: barrido TCP de subred local (rápido, /24 típicamente)
-            String found = scanLocalSubnetsForOpenServer(port, 120); // timeout por host en ms
+            // 2b) Discovery UDP (multicast)
+            System.out.println("[ClienteLAN] Probando descubrimiento por Multicast...");
+            ServerHint mc = discoverServerMulticast(DISCOVERY_TIMEOUT, DISCOVERY_TRIES);
+            if (mc != null) {
+                host = mc.host;
+                port = mc.port > 0 ? mc.port : port;
+                for (int i = 0; i < DIRECT_CONNECT_RETRIES; i++) {
+                    if (tryConnect(host, port, DIRECT_CONNECT_TIMEOUT)) {
+                        cacheHost(host);
+                        return true;
+                    }
+                }
+                System.err.println("[ClienteLAN] El servidor respondió por multicast pero el TCP falló: " + host + ":" + port);
+            } else {
+                System.out.println("[ClienteLAN] Multicast sin respuestas.");
+            }
+
+            // 3) Fallback: escaneo TCP de subred (con límites para no demorar)
+            System.out.println("[ClienteLAN] Activando fallback: barrido TCP...");
+            String found = scanLocalSubnetsForOpenServer(port, SCAN_CONNECT_TIMEOUT);
             if (found != null) {
                 host = found;
-                if (tryConnect(host, port, 2000)) {
-                    cacheHost(host);
+                for (int i = 0; i < DIRECT_CONNECT_RETRIES; i++) {
+                    if (tryConnect(host, port, DIRECT_CONNECT_TIMEOUT)) {
+                        cacheHost(host);
+                        return true;
+                    }
+                }
+            }
+
+            // 4) Prompt de IP (una sola vez) y cache automático
+            String typed = promptIpIfAllFailed();
+            if (typed != null) {
+                host = typed;
+                if (tryConnect(host, port, DIRECT_CONNECT_TIMEOUT)) {
+                    // cacheHost(host) ya se hizo en promptIpIfAllFailed()
                     return true;
                 }
             }
@@ -145,7 +203,7 @@ public class ClienteLAN {
             out = new PrintWriter(new BufferedWriter(
                 new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)
             ), true);
-            in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            in  = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
 
             running = true;
             pool.submit(this::readerLoop);
@@ -157,7 +215,7 @@ public class ClienteLAN {
             safeClose(socket);
             socket = null;
             out = null;
-            in = null;
+            in  = null;
             return false;
         }
     }
@@ -173,7 +231,8 @@ public class ClienteLAN {
         ServerHint(String h, int p) { host = h; port = p; }
     }
 
-    private ServerHint discoverServer(int timeoutMillis, int tries) {
+    /** Discovery por broadcast (255.255.255.255 y por interfaz). */
+    private ServerHint discoverServerBroadcast(int timeoutMillis, int tries) {
         try (DatagramSocket ds = new DatagramSocket()) {
             ds.setBroadcast(true);
             ds.setSoTimeout(timeoutMillis);
@@ -181,7 +240,7 @@ public class ClienteLAN {
             byte[] payload = DISCOVER_MAGIC.getBytes(StandardCharsets.UTF_8);
 
             for (int attempt = 1; attempt <= tries; attempt++) {
-                System.out.println("[ClienteLAN] Discovery intento " + attempt + "...");
+                System.out.println("[ClienteLAN] Broadcast intento " + attempt + "...");
 
                 // 1) Broadcast global
                 try {
@@ -190,7 +249,7 @@ public class ClienteLAN {
                     ds.send(probe255);
                 } catch (Exception ignored) {}
 
-                // 2) Broadcast por interfaz (mejor en routers que bloquean 255.255.255.255)
+                // 2) Broadcast por interfaz (muchos APs solo permiten esto)
                 try {
                     for (NetworkInterface ni : java.util.Collections.list(NetworkInterface.getNetworkInterfaces())) {
                         if (!ni.isUp() || ni.isLoopback() || ni.isVirtual()) continue;
@@ -209,7 +268,7 @@ public class ClienteLAN {
                 try {
                     ds.receive(resp);
                 } catch (SocketTimeoutException ste) {
-                    System.out.println("[ClienteLAN] Sin respuesta. Reintentando...");
+                    System.out.println("[ClienteLAN] Broadcast sin respuesta. Reintentando...");
                     continue;
                 }
 
@@ -225,21 +284,64 @@ public class ClienteLAN {
             }
 
         } catch (IOException e) {
-            System.err.println("[ClienteLAN] Error discovery UDP: " + e.getMessage());
+            System.err.println("[ClienteLAN] Error discovery broadcast: " + e.getMessage());
         }
         return null;
     }
 
-    // ====== Fallback: barrido TCP de subred ======
+    /** Discovery por multicast (239.255.255.250:5002). */
+    private ServerHint discoverServerMulticast(int timeoutMillis, int tries) {
+        try (MulticastSocket ms = new MulticastSocket(MC_PORT)) {
+            ms.setSoTimeout(timeoutMillis);
+            InetAddress grp = InetAddress.getByName(MC_ADDR);
+            ms.joinGroup(grp);
+
+            byte[] payload = DISCOVER_MAGIC.getBytes(StandardCharsets.UTF_8);
+
+            for (int i = 1; i <= tries; i++) {
+                // Enviar consulta al grupo
+                DatagramPacket ask = new DatagramPacket(payload, payload.length, grp, MC_PORT);
+                ms.send(ask);
+
+                // Esperar respuesta
+                byte[] buf = new byte[512];
+                DatagramPacket resp = new DatagramPacket(buf, buf.length);
+                try {
+                    ms.receive(resp);
+                } catch (SocketTimeoutException ste) {
+                    System.out.println("[ClienteLAN] Multicast sin respuesta. Reintentando...");
+                    continue;
+                }
+
+                String json = new String(resp.getData(), resp.getOffset(), resp.getLength(), StandardCharsets.UTF_8).trim();
+                try {
+                    JsonObject o = gson.fromJson(json, JsonObject.class);
+                    if (o != null && DISCOVER_REPLY.equals(o.get("type").getAsString())) {
+                        String h = o.get("host").getAsString();
+                        int p = o.get("port").getAsInt();
+                        return new ServerHint(h, p);
+                    }
+                } catch (Exception ignored) {}
+            }
+        } catch (IOException e) {
+            System.err.println("[ClienteLAN] Multicast no disponible: " + e.getMessage());
+        }
+        return null;
+    }
+
+    // ====== Fallback: barrido TCP de subred (con límites) ======
     private String scanLocalSubnetsForOpenServer(int tcpPort, int perHostTimeoutMs) {
         try {
             List<String> candidates = computeSubnetHosts();
-            System.out.println("[ClienteLAN] Barrido TCP sobre " + candidates.size() + " hosts...");
+            System.out.println("[ClienteLAN] Barrido TCP sobre " + candidates.size() + " hosts (máx " + MAX_SCAN_HOSTS + ")...");
+            int count = 0;
             for (String ip : candidates) {
+                if (count >= MAX_SCAN_HOSTS) break; // respeto límite duro
                 if (tryProbeTcp(ip, tcpPort, perHostTimeoutMs)) {
                     System.out.println("[ClienteLAN] Puerto " + tcpPort + " abierto en " + ip + ". Posible servidor.");
                     return ip;
                 }
+                count++;
             }
         } catch (Exception e) {
             System.err.println("[ClienteLAN] Error en barrido TCP: " + e.getMessage());
@@ -257,8 +359,8 @@ public class ClienteLAN {
     }
 
     /**
-     * Calcula todos los hosts IPv4 de las subredes locales (solo /24 o más grandes),
-     * excluyendo loopback y direcciones sin broadcast. Devuelve lista de IPs tipo "192.168.0.1"...".254".
+     * Calcula hosts IPv4 de las subredes locales (sin forzar /24).
+     * Para redes grandes, recorta a una ventana centrada en la IP local para no exceder MAX_SCAN_HOSTS.
      */
     private List<String> computeSubnetHosts() throws SocketException {
         List<String> out = new ArrayList<>();
@@ -272,21 +374,30 @@ public class ClienteLAN {
                 if (!(addr instanceof Inet4Address)) continue;
                 short prefix = ia.getNetworkPrefixLength();
                 if (prefix <= 0 || prefix > 30) continue; // evitar rangos raros o enormes
-                if (prefix < 24) prefix = 24;             // limitar a /24 para mantener rápido
 
                 int mask = prefixToMask(prefix);
                 int ip = bytesToInt(addr.getAddress());
                 int net = ip & mask;
                 int bcast = net | ~mask;
 
-                // Iterar host range (excluyendo net y broadcast)
-                int start = (net + 1);
-                int end   = (bcast - 1);
-                for (int cur = start; cur <= end; cur++) {
-                    String hostIp = intToIPv4(cur);
-                    // Evitar probarnos a nosotros mismos
-                    if (!hostIp.equals(((Inet4Address) addr).getHostAddress())) {
-                        out.add(hostIp);
+                int start = net + 1;
+                int end   = bcast - 1;
+                int totalHosts = Math.max(0, end - start + 1);
+
+                // Evitar agregar millones de hosts: recortar a una ventana centrada en mi IP
+                if (totalHosts > MAX_SCAN_HOSTS) {
+                    int my = bytesToInt(((Inet4Address) addr).getAddress());
+                    int half = MAX_SCAN_HOSTS / 2;
+                    int winStart = Math.max(start, my - half);
+                    int winEnd   = Math.min(end,   my + half);
+                    for (int cur = winStart; cur <= winEnd; cur++) {
+                        String hostIp = intToIPv4(cur);
+                        if (!hostIp.equals(((Inet4Address) addr).getHostAddress())) out.add(hostIp);
+                    }
+                } else {
+                    for (int cur = start; cur <= end; cur++) {
+                        String hostIp = intToIPv4(cur);
+                        if (!hostIp.equals(((Inet4Address) addr).getHostAddress())) out.add(hostIp);
                     }
                 }
             }
@@ -320,6 +431,25 @@ public class ClienteLAN {
         try (FileWriter fw = new FileWriter("server_ip.txt")) {
             fw.write(h);
         } catch (IOException ignored) {}
+    }
+
+    // ====== Prompt de IP si todo falla ======
+    private String promptIpIfAllFailed() {
+        try {
+            if (GraphicsEnvironment.isHeadless()) return null;
+            String ip = JOptionPane.showInputDialog(
+                null,
+                "No se encontró el servidor automáticamente.\nIngresá la IP del servidor (por ej. 192.168.10.23):",
+                "Conectar a servidor LAN",
+                JOptionPane.QUESTION_MESSAGE
+            );
+            if (ip != null && !ip.isBlank()) {
+                ip = ip.trim();
+                cacheHost(ip); // quedará guardado
+                return ip;
+            }
+        } catch (Throwable ignored) {}
+        return null;
     }
 
     // ====== Hilo lector asíncrono ======
@@ -365,7 +495,7 @@ public class ClienteLAN {
                 System.err.println("[ClienteLAN] Tu oponente se desconectó.");
                 break;
             default:
-                // START / REVEAL / otros los maneja la pantalla vía onMessage
+                // START / REVEAL / otros los maneja la pantalla vía onMessage (setOnMessage)
                 break;
         }
     }
