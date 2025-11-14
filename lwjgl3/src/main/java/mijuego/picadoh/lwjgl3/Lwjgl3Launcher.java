@@ -69,7 +69,7 @@ public class Lwjgl3Launcher {
                     } catch (Exception e) {
                         System.err.println("[ICON] Error intentando leer con ImageIO (probablemente .ico no soportado por ImageIO): " + p);
                         // Para .ico ImageIO suele no soportar; intentamos añadir .ico igualmente pero solo si no causa error posterior.
-                        // Sin embargo para mayor seguridad no agregamos .ico aquí. Si querés forzar .ico, movelo a resources y probamos.
+                        // Sin embargo para Mayor seguridad no agregamos .ico aquí. Si querés forzar .ico, movelo a resources y probamos.
                     }
                 }
             } catch (Throwable t) {
