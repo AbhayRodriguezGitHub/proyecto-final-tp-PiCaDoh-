@@ -19,6 +19,8 @@ import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 import mijuego.picadoh.Principal;
 import mijuego.picadoh.PantallaMenu;
+import mijuego.mundo.PantallaMundo3D;
+
 
 public class PantallaTaberna implements Screen {
 
@@ -84,6 +86,7 @@ public class PantallaTaberna implements Screen {
         estiloInvisible.over = null;
         skin.add("default", estiloInvisible);
 
+        // BOTÓN ATRÁS (volver al menú)
         TextButton btnAtras = new TextButton("", skin);
         btnAtras.setBounds(26, 940, 150 - 26, 1064 - 940);
         btnAtras.addListener(new ClickListener() {
@@ -94,6 +97,7 @@ public class PantallaTaberna implements Screen {
         });
         stage.addActor(btnAtras);
 
+        // BOTÓN RADIO (cambia la pista)
         TextButton btnRadio = new TextButton("", skin);
         btnRadio.setBounds(1510, 374, 1684 - 1510, 579 - 374);
         btnRadio.addListener(new ClickListener() {
@@ -104,6 +108,7 @@ public class PantallaTaberna implements Screen {
         });
         stage.addActor(btnRadio);
 
+        // BOTÓN SALÓN 1
         TextButton btnSalon1 = new TextButton("", skin);
         btnSalon1.setBounds(1410, 117, 1548 - 1410, 255 - 117);
         btnSalon1.addListener(new ClickListener() {
@@ -114,20 +119,28 @@ public class PantallaTaberna implements Screen {
         });
         stage.addActor(btnSalon1);
 
-        TextButton btnNON = new TextButton("", skin);
-        btnNON.setBounds(379, 115, 514 - 379, 527 - 115);
-        btnNON.addListener(new ClickListener() {
+        // BOTÓN MODO HISTORIA 3D (reemplaza al viejo NON para "fuera del proyecto")
+        TextButton btnMundo3D = new TextButton("", skin);
+        // Coordenadas: X: 380–514 / Y: 110–259
+        btnMundo3D.setBounds(
+            380,          // x
+            110,          // y
+            514 - 380,    // ancho
+            259 - 110     // alto
+        );
+        btnMundo3D.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
-                mantenerMusicaAlSalir = true;
-                juego.setScreen(new PantallaPresentacionCarta(
-                    juego,
-                    PantallaTaberna.this,
-                    "lwjgl3/assets/menus/NON.png"
-                ));
+                // Entrando al mundo 3D → no queremos mantener la música de taberna
+                mantenerMusicaAlSalir = false;
+                detenerMusicaTaberna();
+
+                juego.setScreen(new PantallaMundo3D(juego));
+                System.out.println("[TABERNA] Entrando al MODO HISTORIA 3D desde el cuadro NON.");
             }
         });
-        stage.addActor(btnNON);
+        stage.addActor(btnMundo3D);
 
+        // BOTÓN LIBRO (L1)
         TextButton btnL1 = new TextButton("", skin);
         btnL1.setBounds(890, 115, 1030 - 890, 255 - 115);
         btnL1.addListener(new ClickListener() {
@@ -138,23 +151,32 @@ public class PantallaTaberna implements Screen {
         });
         stage.addActor(btnL1);
 
+        // BOTÓN CRÉDITOS (video final)
         TextButton btnCreditos = new TextButton("", skin);
         btnCreditos.setBounds(1678, 816, 1872 - 1678, 1025 - 816);
         btnCreditos.addListener(new ClickListener() {
             @Override public void clicked(InputEvent event, float x, float y) {
                 mantenerMusicaAlSalir = true;
                 PantallaTaberna.pauseMusicaActual();
-                juego.setScreen(new PantallaVideoCredits(juego, PantallaTaberna.this, "lwjgl3/assets/final/CREDITOS.mp4", true));
+                juego.setScreen(new PantallaVideoCredits(
+                    juego,
+                    PantallaTaberna.this,
+                    "lwjgl3/assets/final/CREDITOS.mp4",
+                    true
+                ));
             }
         });
         stage.addActor(btnCreditos);
 
+        // INPUT: Stage + atajos de teclado para pausar/reanudar música
         InputMultiplexer multiplexer = new InputMultiplexer();
         multiplexer.addProcessor(stage);
         multiplexer.addProcessor(new InputAdapter() {
             @Override
             public boolean keyDown(int keycode) {
-                boolean ctrl = Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT) || Gdx.input.isKeyPressed(Input.Keys.CONTROL_RIGHT);
+                boolean ctrl = Gdx.input.isKeyPressed(Input.Keys.CONTROL_LEFT)
+                    || Gdx.input.isKeyPressed(Input.Keys.CONTROL_RIGHT);
+
                 if (ctrl && keycode == Input.Keys.P) {
                     pauseMusicaActual();
                     System.out.println("[TABERNA] Ctrl+P -> pausa música");

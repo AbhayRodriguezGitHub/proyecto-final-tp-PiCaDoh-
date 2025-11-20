@@ -15,12 +15,10 @@ import java.util.*;
 
 /**
  * Pantalla de selección de tropas.
- * - Opción B (no bloqueante): al completar las 15 tropas se envía la lista al servidor si está conectado,
+ * (No bloqueante) al completar las 15 tropas se envía la lista al servidor si está conectado,
  *   y se avanza localmente a la pantalla de selección de efectos.
- *
- * Nota: El manejo de mensajes entrantes (MATCHED, START, etc.) debe implementarse en Principal
- *       (clienteLAN.setOnMessage(...)) para no sobrescribir listeners desde varias pantallas.
  */
+
 public class PantallaSeleccionTropa implements Screen {
     private final Principal juego;
     private Texture fondo;
@@ -58,7 +56,7 @@ public class PantallaSeleccionTropa implements Screen {
     public void show() {
         fondo = new Texture(Gdx.files.absolute("lwjgl3/assets/menus/ELECCIONTROPA.png"));
 
-        // 🚫 Evitar superposición de músicas: apagamos TODO y luego sí ponemos la de selección
+        // Evitar superposición de música
         juego.detenerTodasLasMusicas();
         juego.reproducirMusicaSeleccion();
 

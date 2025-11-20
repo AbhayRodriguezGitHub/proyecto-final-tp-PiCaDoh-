@@ -4,8 +4,10 @@ import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.files.FileHandle;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Cursor;
 import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.MathUtils;
 import mijuego.picadoh.cartas.RegistroCartas;
@@ -43,9 +45,19 @@ public class Principal extends Game {
 
     private boolean modoVentana = false;
 
+    // ───────────────────────────────
+    // DEBUG: Visor de coordenadas
+    // ───────────────────────────────
+    private BitmapFont debugFont;
+    private boolean mostrarVisorCoordenadas = true; // siempre activado por defecto
+
     @Override
     public void create() {
         batch = new SpriteBatch();
+
+        // Fuente para visor de coordenadas
+        debugFont = new BitmapFont();
+        debugFont.setColor(Color.WHITE);
 
         // Cursor robusto (no debe crashear aunque falte el PNG)
         try {
@@ -77,6 +89,32 @@ public class Principal extends Game {
         // -------------------------
 
         setScreen(new PantallaIntro(this));
+    }
+
+    // ───────────────────────────────
+    // OVERRIDE render() para dibujar visor de coordenadas arriba de todo
+    // ───────────────────────────────
+    @Override
+    public void render() {
+        // Render de la pantalla actual
+        super.render();
+
+        // Render del visor de coordenadas
+        if (mostrarVisorCoordenadas && batch != null && debugFont != null) {
+            int mouseX = Gdx.input.getX();
+            int mouseY = Gdx.input.getY();
+            int screenH = Gdx.graphics.getHeight();
+
+            // Convertimos Y para que (0,0) sea arriba a la izquierda en pantalla
+            int mouseYInvertida = screenH - mouseY;
+
+            String texto = "X: " + mouseX + "  Y: " + mouseYInvertida;
+
+            batch.begin();
+            // 10 px desde la izquierda, y 10 px desde arriba
+            debugFont.draw(batch, texto, 10, screenH - 10);
+            batch.end();
+        }
     }
 
     private void cargarMusica() {
@@ -395,6 +433,7 @@ public class Principal extends Game {
     @Override
     public void dispose() {
         batch.dispose();
+        if (debugFont != null) debugFont.dispose();
         if (musicaMenu != null) musicaMenu.dispose();
         if (musicaSeleccion != null) musicaSeleccion.dispose();
         if (musicaBatalla1 != null) musicaBatalla1.dispose();

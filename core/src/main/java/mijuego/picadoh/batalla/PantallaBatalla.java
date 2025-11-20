@@ -31,17 +31,16 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Pantalla de batalla con sincronización LAN y reintentos de PLAY para evitar deadlocks.
+ * Pantalla de batalla con sincronización LAN
  * - INVOKE / INVOKE_EFFECT se envían al soltar cartas/efectos.
- * - Al presionar PLAY se envía PLAY y se inicia reintento hasta recibir REVEAL.
- * - Al recibir REVEAL se aplica lo revelado y se ejecuta la fase de combate.
- * - Si no llega REVEAL tras N reintentos, se resuelve localmente (fallback offline).
  *
  * Cambios clave:
  * - Efectos sincronizados para ambos clientes.
  * - Duración de 1 turno con reversión garantizada.
  * - Limpieza visual del efecto en ambos lados al finalizar el combate.
  */
+
+
 public class PantallaBatalla implements Screen {
 
     private final Principal juego;
@@ -100,7 +99,7 @@ public class PantallaBatalla implements Screen {
     private int indiceEfectoTomado = -1;
     private boolean hoverRanuraEfectoJugador = false;
 
-    // --- LAN estricto: sin fallback offline si hay cliente LAN ---
+    // LAN estricto: sin fallback offline si hay cliente LAN
     private final boolean lanModoEstricto;
     private boolean revealRecibidoEsteTurno = false; // sólo para depurar/diagnosticar
 
@@ -211,7 +210,7 @@ public class PantallaBatalla implements Screen {
     private static final int MAX_INVOC_TROPAS_TURNO = 2;
     private int invocacionesTropaEsteTurno = 0;
 
-    // --- Estado LAN / reintentos ---
+    // Estado LAN / reintentos
     private boolean esperandoReveal = false;      // esperando REVEAL del servidor
     private boolean clientListenerRegistered = false;
     private boolean playEnviadoEsteTurno = false; // evita múltiples envíos por clics repetidos
@@ -578,7 +577,7 @@ public class PantallaBatalla implements Screen {
         });
     }
 
-    // ---------------------- LÓGICA PLAY/REVEAL ----------------------
+    // LÓGICA PLAY/REVEAL
 
     private void onPlayButtonPressed() {
         if (partidaTerminada || batallaEnCurso) return;
@@ -769,7 +768,7 @@ public class PantallaBatalla implements Screen {
         verificarCondicionYTransicion();
     }
 
-    // ---------------------- Ciclo de vida Screen ----------------------
+    // Ciclo de vida Screen
 
     @Override
     public void show() {

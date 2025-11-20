@@ -8,15 +8,8 @@ import java.util.*;
 /**
  * Contexto de batalla que mantiene el estado (tropas propias/enemigas, vida, flags de efectos)
  * y permite aplicar efectos desde la perspectiva del jugador o desde la perspectiva enemiga.
- *
- * IMPORTANT: cuando recibas un REVEAL desde la red, instanciá los efectos (RegistroEfectos.crear)
- * y llamá:
- *   contexto.applyEffectAsPlayer(efecto); // si el effect viene en playerEffectInvokes (local)
- *   contexto.applyEffectAsEnemy(efecto);  // si el effect viene en enemyEffectInvokes (rival)
- *
- * De ese modo no necesitás duplicar la lógica de los efectos: el mismo efecto actúa
- * sobre tropasPropias/tropasEnemigas de forma transparente.
  */
+
 public class ContextoBatalla {
     private static final int MAX_TROPAS_EN_CAMPO = 5;
     private static final int VIDA_MAXIMA = 80;
@@ -61,9 +54,8 @@ public class ContextoBatalla {
         this.vidaEnemiga = Math.max(0, Math.min(vidaE, VIDA_MAXIMA));
     }
 
-    // -----------------
     // Perspectiva utils
-    // -----------------
+
     /**
      * Ejecuta runnable con perspectiva invertida temporalmente (útil para aplicar efectos del rival).
      */
@@ -85,9 +77,6 @@ public class ContextoBatalla {
         return this.perspectivaInvertida;
     }
 
-    // -----------------
-    // Getters (respetan perspectiva)
-    // -----------------
     /**
      * Retorna la lista de tropas que, desde la perspectiva actual, se consideran "propias".
      * Si perspectivaInvertida == true, devuelve la lista interna de 'tropasEnemigas'.
@@ -161,9 +150,8 @@ public class ContextoBatalla {
         }
     }
 
-    // -----------------
     // Tropas (respetan perspectiva)
-    // -----------------
+
     public boolean agregarTropaPropia(CartaTropa carta) {
         List<CartaTropa> listas = getTropasPropias();
         if (listas.size() < MAX_TROPAS_EN_CAMPO) {
@@ -188,9 +176,8 @@ public class ContextoBatalla {
     // Selección por objetivo
     public void setTropaSeleccionada(CartaTropa tropa) { this.tropaSeleccionada = tropa; }
 
-    // -----------------
     // Flags de efectos (sin perspectiva — flags aplican a la "vista" actual del jugador)
-    // -----------------
+
     public boolean isInvocacionLibreEsteTurno() { return invocacionLibreEsteTurno; }
     public void setInvocacionLibreEsteTurno(boolean v) { this.invocacionLibreEsteTurno = v; }
 
@@ -247,9 +234,9 @@ public class ContextoBatalla {
         revertirEfectosTurno();
     }
 
-    // -----------------
+
     // Helpers para aplicar efectos con la perspectiva correcta
-    // -----------------
+
     /**
      * Aplica un efecto como si lo hubiese jugado EL JUGADOR LOCAL (sin invertir la perspectiva).
      * El efecto puede registrar reversiones con contexto.registrarReversionTurno(...)

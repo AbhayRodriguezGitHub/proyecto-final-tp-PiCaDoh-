@@ -26,8 +26,6 @@ public class BattleState {
     private List<CardState> lastTurnInvA = new ArrayList<>();
     private List<CardState> lastTurnInvB = new ArrayList<>();
 
-    // ======= Métodos principales =======
-
     /**
      * Registra las invocaciones del turno para ambos jugadores.
      * Corrige slots fuera de rango, pisa el contenido anterior,
