@@ -1,12 +1,5 @@
 # PI-CA-DOH! 
 
-## Integrantes del Grupo
- 
-- Rodríguez Abhay
-- Mendez Santiago
-- Gonzalez Gael
-
-
 ## Descripción Corta del Juego 
 
 Pi-Ca-Doh! Es un videojuego de cartas por turnos donde dos jugadores se enfrentan en un duelo
